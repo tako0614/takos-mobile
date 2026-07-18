@@ -1,4 +1,4 @@
-@import "../mobile-kit/src/mobile-shell.css";
+@import "@takosjp/mobile-kit/mobile-shell.css";
 
 :root {
   --shell-text: #172017;
