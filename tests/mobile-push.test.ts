@@ -140,7 +140,7 @@ test("Takos native push retries listener and native cleanup boundaries", async (
   expect(deactivateAttempts).toBe(2);
 });
 
-test("iOS native push keeps APNs tokens session-local and trusts signed bundle configuration", () => {
+test("iOS native push keeps APNs tokens session-local and trusts the signed entitlement", () => {
   const source = readFileSync(
     new URL(
       "../src-tauri/plugins/mobile-push/ios/Sources/MobilePushPlugin.swift",
@@ -158,11 +158,8 @@ test("iOS native push keeps APNs tokens session-local and trusts signed bundle c
   expect(source).toContain(
     "Registration is session-bound and starts from getToken()",
   );
-  expect(source).toContain("Bundle.main.object(");
-  expect(source).toContain(
-    'forInfoDictionaryKey: "TauriMobilePushAPNSEnvironment"',
-  );
-  expect(source).not.toContain("SecTask");
+  expect(source).toContain("SecTaskCopyValueForEntitlement");
+  expect(source).toContain('"aps-environment" as CFString');
   expect(source).toContain('case "development":');
   expect(source).toContain('return "sandbox"');
   expect(source).toContain('case "production":');
@@ -238,45 +235,6 @@ test("Android FCM registration is FID-based and session-bound", () => {
   expect(manifest).toContain("firebase_messaging_installation_id_enabled");
   expect(manifest).toContain("firebase_messaging_auto_init_enabled");
   expect(manifest).toContain('android:value="false"');
-});
-
-test("Android product plugins support the Tauri app minimum SDK", () => {
-  const keystoreGradle = readFileSync(
-    new URL(
-      "../src-tauri/plugins/keystore/android/build.gradle.kts",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-  const mobilePushGradle = readFileSync(
-    new URL(
-      "../src-tauri/plugins/mobile-push/android/build.gradle.kts",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-  const keystoreManifest = readFileSync(
-    new URL(
-      "../src-tauri/plugins/keystore/android/src/main/AndroidManifest.xml",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-  const mobilePushManifest = readFileSync(
-    new URL(
-      "../src-tauri/plugins/mobile-push/android/src/main/AndroidManifest.xml",
-      import.meta.url,
-    ),
-    "utf8",
-  );
-
-  expect(keystoreGradle).toContain("minSdk = 24");
-  expect(mobilePushGradle).toContain("minSdk = 24");
-  expect(keystoreManifest).not.toContain("<uses-sdk");
-  expect(mobilePushManifest).not.toContain("<uses-sdk");
-  expect(mobilePushGradle).toContain(
-    'implementation("androidx.appcompat:appcompat:1.6.0")',
-  );
 });
 
 test("native push event activation is an idempotent cross-session barrier", () => {

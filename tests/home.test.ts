@@ -6,10 +6,12 @@ import {
   updateTakosMobileAgentTaskStatus,
 } from "../src/agent-tasks.ts";
 import {
-  applyTakosMobileGitAppRevision,
-  installTakosMobileGitApp,
-  planTakosMobileGitAppRevision,
-  removeTakosMobileAppInstallation,
+  applyTakosMobileCapsulePlan,
+  installTakosMobileGitCapsule,
+  loadTakosMobileCapsules,
+  planTakosMobileCapsuleUpdate,
+  removeTakosMobileCapsule,
+  selectTakosMobileInstallConfigId,
 } from "../src/apps.ts";
 import {
   cancelTakosMobileRun,
@@ -48,15 +50,319 @@ const session: MobileSession = {
   createdAt: "2026-06-30T00:00:00.000Z",
 };
 
-test("loadTakosMobileHome reads workspace summary APIs with bearer auth", async () => {
-  const seen: Array<{ url: string; method: string; authorization?: string }> =
-    [];
+test("Capsule previews join public Capsule and Source records", async () => {
+  const capsules = await loadTakosMobileCapsules({
+    session,
+    spaceId: "me",
+    fetch: async (input) =>
+      String(input).endsWith("/capsules")
+        ? json({
+            capsules: [
+              {
+                id: "capsule-1",
+                sourceId: "source-1",
+                name: "office",
+                status: "ready",
+              },
+            ],
+          })
+        : json({
+            sources: [
+              {
+                id: "source-1",
+                url: "https://github.com/tako0614/takos-office.git",
+                defaultRef: "main",
+                defaultPath: "deploy/opentofu",
+              },
+            ],
+          }),
+  });
+
+  expect(capsules).toEqual([
+    {
+      id: "capsule-1",
+      spaceId: "me",
+      sourceId: "source-1",
+      name: "office",
+      status: "ready",
+      source: {
+        url: "https://github.com/tako0614/takos-office.git",
+        ref: "main",
+        path: "deploy/opentofu",
+      },
+      routePath: "/apps",
+    },
+  ]);
+});
+
+test("InstallConfig selection matches canonical URL/path without requiring a Store ref", () => {
+  expect(
+    selectTakosMobileInstallConfigId(
+      [
+        {
+          id: "cfg-default-opentofu-capsule",
+          name: "opentofu-capsule",
+        },
+        {
+          id: "cfg-app-exact",
+          name: "first-party-app",
+          store: {
+            source: {
+              url: "https://github.com/example/app",
+              path: "deploy/opentofu",
+            },
+          },
+          interfaceBlueprints: [{ key: "launcher" }],
+        },
+      ],
+      {
+        url: "https://github.com/example/app.git",
+        ref: "main",
+        path: "./deploy/opentofu/",
+      },
+    ),
+  ).toBe("cfg-app-exact");
+});
+
+test("InstallConfig selection ignores Store ref hints but rejects URL/path mismatches", () => {
+  expect(
+    selectTakosMobileInstallConfigId(
+      [
+        { id: "cfg-generic-name", name: "opentofu-capsule" },
+        {
+          id: "cfg-wrong-url",
+          name: "app",
+          store: {
+            source: {
+              url: "https://github.com/example/other.git",
+              ref: "main",
+              path: ".",
+            },
+          },
+        },
+        {
+          id: "cfg-ref-is-display-only",
+          name: "app",
+          store: {
+            source: {
+              url: "https://github.com/example/app.git",
+              ref: "stable",
+              path: ".",
+            },
+          },
+        },
+        {
+          id: "cfg-wrong-path",
+          name: "app",
+          store: {
+            source: {
+              url: "https://github.com/example/app.git",
+              ref: "main",
+              path: "deploy/opentofu",
+            },
+          },
+        },
+        { id: "cfg-default-opentofu-capsule", name: "renamed-default" },
+      ],
+      {
+        url: "https://github.com/example/app.git",
+        ref: "main",
+        path: ".",
+      },
+    ),
+  ).toBe("cfg-ref-is-display-only");
+});
+
+test("InstallConfig selection fails closed on duplicate canonical URL/path identities", () => {
+  expect(() =>
+    selectTakosMobileInstallConfigId(
+      [
+        {
+          id: "cfg-app-a",
+          store: {
+            source: {
+              url: "https://github.com/example/app.git",
+              ref: "main",
+              path: ".",
+            },
+          },
+        },
+        {
+          id: "cfg-app-b",
+          store: {
+            source: {
+              url: "https://github.com/example/app",
+              ref: "stable",
+              path: "./",
+            },
+          },
+        },
+      ],
+      {
+        url: "https://github.com/example/app.git",
+        ref: "release-selected-by-user",
+        path: ".",
+      },
+    ),
+  ).toThrow("multiple InstallConfigs");
+});
+
+test("InstallConfig selection uses names only for the generic fallback", () => {
+  expect(
+    selectTakosMobileInstallConfigId(
+      [
+        {
+          id: "cfg-same-app-name",
+          name: "app",
+          store: {
+            source: {
+              url: "https://github.com/example/not-app.git",
+              ref: "main",
+              path: ".",
+            },
+          },
+        },
+        { id: "cfg-generic-name", name: "opentofu-capsule" },
+      ],
+      {
+        url: "https://github.com/example/app.git",
+        ref: "main",
+        path: ".",
+      },
+    ),
+  ).toBe("cfg-generic-name");
+});
+
+test("InstallConfig selection never treats an app config as generic fallback", () => {
+  expect(
+    selectTakosMobileInstallConfigId(
+      [
+        {
+          id: "cfg-default-opentofu-capsule",
+          name: "opentofu-capsule",
+          store: {
+            source: {
+              url: "https://github.com/example/other.git",
+              ref: "main",
+              path: ".",
+            },
+          },
+        },
+        { id: "cfg-generic-name", name: "opentofu-capsule" },
+      ],
+      {
+        url: "https://github.com/example/app.git",
+        ref: "main",
+        path: ".",
+      },
+    ),
+  ).toBe("cfg-generic-name");
+});
+
+test("launcher does not fall back to Capsule outputs, homepages, names, or orphan surfaces", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/api/spaces")) {
+      return json({ spaces: [{ id: "personal", kind: "user", name: "Me" }] });
+    }
+    if (url.endsWith("/api/spaces/me/capsules")) {
+      return json({
+        capsules: [
+          {
+            id: "capsule-1",
+            sourceId: "source-1",
+            name: "Same name",
+            status: "ready",
+            homepage: "https://homepage.example/not-authoritative",
+            outputs: { launch_url: "https://output.example/not-authorized" },
+          },
+        ],
+      });
+    }
+    if (url.endsWith("/api/spaces/me/sources")) {
+      return json({
+        sources: [
+          {
+            id: "source-1",
+            url: "https://github.com/example/app.git",
+            defaultRef: "main",
+            defaultPath: ".",
+            homepage: "https://source.example/not-authoritative",
+          },
+        ],
+      });
+    }
+    if (url.endsWith("/api/apps")) {
+      return json({
+        apps: [
+          {
+            id: "if-orphan",
+            name: "Same name",
+            owner_kind: "Capsule",
+            owner_id: "another-capsule",
+            interface_type: "interface.ui.surface",
+            interface_version: "1",
+            url: "https://orphan.example/",
+          },
+          {
+            id: "if-wrong-version",
+            name: "Same name",
+            owner_kind: "Capsule",
+            owner_id: "capsule-1",
+            interface_type: "interface.ui.surface",
+            interface_version: "0",
+            url: "https://legacy.example/",
+          },
+        ],
+      });
+    }
+    if (url.includes("/threads?")) return json({ threads: [] });
+    if (url.includes("/agent-tasks?")) return json({ tasks: [] });
+    if (url.includes("/memories?")) return json({ memories: [] });
+    if (url.endsWith("/api/notifications?limit=3")) {
+      return json({ notifications: [] });
+    }
+    return json({});
+  }) as typeof fetch;
+
+  try {
+    const home = await loadTakosMobileHome(session);
+    expect(home.appCount).toBe(1);
+    expect(home.apps).toEqual([
+      {
+        id: "capsule-1",
+        name: "Same name",
+        spaceId: "me",
+        spaceName: "Me",
+        status: "ready",
+        launcherPath: "/apps",
+        launchTarget: { kind: "unavailable" },
+      },
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("loadTakosMobileHome reads installed Capsules and authorized launcher surfaces", async () => {
+  const seen: Array<{
+    url: string;
+    method: string;
+    authorization?: string | null;
+    spaceId?: string | null;
+  }> = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
-    const headers = init?.headers as Record<string, string>;
-    seen.push({ url, method, authorization: headers.authorization });
+    const headers = new Headers(init?.headers);
+    seen.push({
+      url,
+      method,
+      authorization: headers.get("authorization"),
+      spaceId: headers.get("x-takos-space-id"),
+    });
 
     if (url.endsWith("/api/auth/me")) {
       return json({
@@ -148,26 +454,41 @@ test("loadTakosMobileHome reads workspace summary APIs with bearer auth", async 
         ],
       });
     }
-    if (url.endsWith("/api/spaces/me/app-installations")) {
+    if (url.endsWith("/api/spaces/me/capsules")) {
       return json({
-        installations: [
+        capsules: [
           {
-            id: "inst-1",
-            app_id: "jp.takos.office",
+            id: "capsule-1",
+            sourceId: "source-1",
+            name: "jp.takos.office",
             status: "ready",
-            source: {
-              kind: "git",
-              url: "https://github.com/tako0614/takos-office.git",
-              ref: "main",
-              modulePath: "deploy/opentofu",
-              commit: "1111111111111111111111111111111111111111",
-            },
-            services: [
-              {
-                id: "launch_url",
-                endpoint: "https://office.takos.test/",
-              },
-            ],
+            homepage: "https://catalog.example/not-authoritative",
+            outputs: { launch_url: "https://output.example/not-authorized" },
+          },
+          {
+            id: "capsule-2",
+            sourceId: "source-2",
+            name: "No launcher",
+            status: "active",
+          },
+        ],
+      });
+    }
+    if (url.endsWith("/api/spaces/me/sources")) {
+      return json({
+        sources: [
+          {
+            id: "source-1",
+            url: "https://github.com/tako0614/takos-office.git",
+            defaultRef: "main",
+            defaultPath: "deploy/opentofu",
+          },
+          {
+            id: "source-2",
+            url: "https://github.com/example/no-launcher.git",
+            defaultRef: "v1.0.0",
+            defaultPath: ".",
+            homepage: "https://source.example/not-authoritative",
           },
         ],
       });
@@ -200,34 +521,42 @@ test("loadTakosMobileHome reads workspace summary APIs with bearer auth", async 
       return json({
         apps: [
           {
-            id: "app-1",
+            id: "if-office-launcher",
             name: "Docs",
             description: "Workspace documents",
-            app_type: "custom",
-            space_id: "space-1",
-            space_name: "Personal",
-            service_status: "deployed",
-            service_hostname: "docs.takos.test",
+            owner_kind: "Capsule",
+            owner_id: "capsule-1",
+            interface_type: "interface.ui.surface",
+            interface_version: "1",
+            category: "office",
             url: "/apps/docs/",
           },
           {
-            id: "app-2",
-            name: "External",
-            url: "https://external.example/app?token=redacted",
+            id: "if-orphan",
+            name: "Orphan",
+            owner_kind: "Capsule",
+            owner_id: "capsule-orphan",
+            interface_type: "interface.ui.surface",
+            interface_version: "1",
+            url: "https://orphan.example/app",
           },
           {
-            id: "app-3",
-            name: "Unsafe",
-            url: "javascript:alert(1)",
+            id: "if-resource",
+            name: "No launcher",
+            owner_kind: "Resource",
+            owner_id: "capsule-2",
+            interface_type: "interface.ui.surface",
+            interface_version: "1",
+            url: "https://resource.example/app",
           },
           {
-            id: "app-4",
-            name: "Same Origin",
-            url: "https://takos.test/apps/same-origin?x=1#open",
-          },
-          {
-            id: "app-5",
-            name: "No URL",
+            id: "if-old-version",
+            name: "No launcher",
+            owner_kind: "Capsule",
+            owner_id: "capsule-2",
+            interface_type: "interface.ui.surface",
+            interface_version: "0",
+            url: "https://legacy.example/app",
           },
         ],
       });
@@ -258,7 +587,7 @@ test("loadTakosMobileHome reads workspace summary APIs with bearer auth", async 
     expect(home).toEqual({
       userName: "Alice",
       workspaceCount: 2,
-      appCount: 5,
+      appCount: 2,
       unreadNotifications: 3,
       chatTarget: {
         spaceId: "me",
@@ -370,66 +699,56 @@ test("loadTakosMobileHome reads workspace summary APIs with bearer auth", async 
           routePath: "/memory",
         },
       ],
-      appInstallations: [
+      capsules: [
         {
-          id: "inst-1",
+          id: "capsule-1",
           spaceId: "me",
-          appId: "jp.takos.office",
+          sourceId: "source-1",
           name: "jp.takos.office",
           status: "ready",
-          gitUrl: "https://github.com/tako0614/takos-office.git",
-          ref: "main",
-          modulePath: "deploy/opentofu",
-          sourceCommit: "1111111111111111111111111111111111111111",
-          launchUrl: "https://office.takos.test/",
-          routePath: "/installations/inst-1",
+          source: {
+            url: "https://github.com/tako0614/takos-office.git",
+            ref: "main",
+            path: "deploy/opentofu",
+          },
+          routePath: "/apps",
+        },
+        {
+          id: "capsule-2",
+          spaceId: "me",
+          sourceId: "source-2",
+          name: "No launcher",
+          status: "active",
+          source: {
+            url: "https://github.com/example/no-launcher.git",
+            ref: "v1.0.0",
+            path: ".",
+          },
+          routePath: "/apps",
         },
       ],
       apps: [
         {
-          id: "app-1",
+          id: "capsule-1",
+          interfaceId: "if-office-launcher",
           name: "Docs",
           description: "Workspace documents",
-          appType: "custom",
-          spaceId: "space-1",
+          category: "office",
+          spaceId: "me",
           spaceName: "Personal",
-          status: "deployed",
-          serviceHostname: "docs.takos.test",
-          launcherPath: "/apps/space-1",
+          status: "ready",
+          launcherPath: "/apps",
           launchTarget: {
             kind: "host",
             path: "/apps/docs/",
           },
         },
         {
-          id: "app-2",
-          name: "External",
-          launcherPath: "/apps",
-          launchTarget: {
-            kind: "external",
-            url: "https://external.example/app?token=redacted",
-          },
-        },
-        {
-          id: "app-3",
-          name: "Unsafe",
-          launcherPath: "/apps",
-          launchTarget: {
-            kind: "unavailable",
-          },
-        },
-        {
-          id: "app-4",
-          name: "Same Origin",
-          launcherPath: "/apps",
-          launchTarget: {
-            kind: "host",
-            path: "/apps/same-origin?x=1#open",
-          },
-        },
-        {
-          id: "app-5",
-          name: "No URL",
+          id: "capsule-2",
+          name: "No launcher",
+          spaceId: "me",
+          spaceName: "Personal",
+          status: "active",
           launcherPath: "/apps",
           launchTarget: {
             kind: "unavailable",
@@ -450,13 +769,14 @@ test("loadTakosMobileHome reads workspace summary APIs with bearer auth", async 
     expect(seen.map((item) => `${item.method} ${item.url}`)).toEqual([
       "GET https://takos.test/api/auth/me",
       "GET https://takos.test/api/spaces",
-      "GET https://takos.test/api/apps",
       "GET https://takos.test/api/notifications/unread-count",
       "GET https://takos.test/api/notifications?limit=3",
       "GET https://takos.test/api/spaces/me/threads?status=active",
       "GET https://takos.test/api/spaces/me/agent-tasks?limit=4",
       "GET https://takos.test/api/spaces/me/memories?limit=4",
-      "GET https://takos.test/api/spaces/me/app-installations",
+      "GET https://takos.test/api/spaces/me/capsules",
+      "GET https://takos.test/api/spaces/me/sources",
+      "GET https://takos.test/api/apps",
       "GET https://takos.test/api/threads/thread-1/messages?limit=5&offset=0",
       "GET https://takos.test/api/threads/thread-2/messages?limit=5&offset=0",
       "GET https://takos.test/api/threads/thread-3/messages?limit=5&offset=0",
@@ -464,6 +784,31 @@ test("loadTakosMobileHome reads workspace summary APIs with bearer auth", async 
     for (const item of seen) {
       expect(item.authorization).toBe("Bearer mobile-token");
     }
+    expect(seen.find((item) => item.url.endsWith("/api/apps"))?.spaceId).toBe(
+      "me",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("loadTakosMobileHome does not hide authorization failures as empty cards", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/api/spaces")) {
+      return new Response(JSON.stringify({ error: "insufficient_scope" }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return json({});
+  }) as typeof fetch;
+
+  try {
+    await expect(loadTakosMobileHome(session)).rejects.toThrow(
+      "Mobile API request failed: 403 /api/spaces",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1287,224 +1632,234 @@ test("deleteTakosMobileMemory rejects blank memory ids", async () => {
   ).rejects.toThrow("Memory id is required.");
 });
 
-test("installTakosMobileGitApp plans and applies a Git URL Capsule through the host", async () => {
+test("installTakosMobileGitCapsule uses the public Source, Capsule, and Run flow", async () => {
   const requests: Request[] = [];
 
   await expect(
-    installTakosMobileGitApp({
+    installTakosMobileGitCapsule({
       session,
       spaceId: " me ",
-      gitUrl: " https://github.com/example/app.git ",
-      ref: " main ",
-      modulePath: ".",
+      source: {
+        url: " https://github.com/example/app.git ",
+        ref: " main ",
+        path: ".",
+      },
       fetch: async (input, init) => {
         const request = new Request(input, init);
         requests.push(request.clone());
-        if (request.url.endsWith("/app-installations/git-url/plan")) {
+        if (request.url.endsWith("/capsule-configs")) {
           return json({
-            source: {
-              kind: "git",
-              url: "https://github.com/example/app.git",
-              ref: "main",
-              commit: "1111111111111111111111111111111111111111",
-            },
-            runtime: { modes: ["shared-cell"] },
-            expected: {
-              commit: "1111111111111111111111111111111111111111",
-              planDigest: "sha256:abc",
-            },
+            installConfigs: [
+              {
+                id: "config-generic",
+                name: "opentofu-capsule",
+              },
+              {
+                id: "config-other-path",
+                name: "app-submodule",
+                store: {
+                  source: {
+                    url: "https://github.com/example/app.git",
+                    ref: "stable",
+                    path: "deploy/opentofu",
+                  },
+                },
+              },
+              {
+                id: "config-first-party",
+                name: "app-main",
+                store: {
+                  source: {
+                    url: "https://github.com/example/app",
+                    ref: "main",
+                    path: "./",
+                  },
+                },
+                interfaceBlueprints: [{ key: "launcher" }],
+              },
+            ],
           });
         }
-        return json({
-          accounts: {
-            installationId: "inst-git-1",
-            status: "ready",
-          },
-        });
+        if (request.url.endsWith("/sources")) {
+          return json({ source: { id: "source-1" } }, 201);
+        }
+        if (request.url.endsWith("/sources/source-1/sync")) {
+          return json({ run: { id: "run-sync", status: "succeeded" } }, 202);
+        }
+        if (request.url.endsWith("/capsules")) {
+          return json({ capsule: { id: "capsule-1" } }, 201);
+        }
+        if (request.url.endsWith("/capsules/capsule-1/plan")) {
+          return json(
+            { run: { id: "run-plan", status: "waiting_approval" } },
+            202,
+          );
+        }
+        if (request.url.endsWith("/runs/run-plan/approve")) {
+          return json({ run: { id: "run-plan", status: "approved" } });
+        }
+        return json({ run: { id: "run-plan", status: "queued" } }, 202);
       },
     }),
   ).resolves.toEqual({
-    installationId: "inst-git-1",
-    status: "ready",
+    capsuleId: "capsule-1",
+    runId: "run-plan",
+    status: "queued",
     raw: {
-      accounts: {
-        installationId: "inst-git-1",
-        status: "ready",
-      },
+      run: { id: "run-plan", status: "queued" },
     },
   });
 
   expect(requests.map((request) => `${request.method} ${request.url}`)).toEqual(
     [
-      "POST https://takos.test/api/spaces/me/app-installations/git-url/plan",
-      "POST https://takos.test/api/spaces/me/app-installations/git-url/apply",
+      "GET https://takos.test/api/spaces/me/capsule-configs",
+      "POST https://takos.test/api/spaces/me/sources",
+      "POST https://takos.test/api/spaces/me/sources/source-1/sync",
+      "POST https://takos.test/api/spaces/me/capsules",
+      "POST https://takos.test/api/spaces/me/capsules/capsule-1/plan",
+      "POST https://takos.test/api/spaces/me/runs/run-plan/approve",
+      "POST https://takos.test/api/spaces/me/runs/run-plan/apply",
     ],
   );
   expect(requests[0].headers.get("authorization")).toBe("Bearer mobile-token");
-  expect(await requests[0].json()).toEqual({
-    git_url: "https://github.com/example/app.git",
-    ref: "main",
-    module_path: ".",
-  });
   expect(await requests[1].json()).toEqual({
-    git_url: "https://github.com/example/app.git",
-    ref: "main",
-    module_path: ".",
-    source_commit: "1111111111111111111111111111111111111111",
-    expected: {
-      commit: "1111111111111111111111111111111111111111",
-      planDigest: "sha256:abc",
-    },
-    expected_commit: "1111111111111111111111111111111111111111",
-    expected_plan_digest: "sha256:abc",
-    mode: "shared-cell",
-    cost_ack: true,
+    name: "app",
+    url: "https://github.com/example/app.git",
+    defaultRef: "main",
+    defaultPath: ".",
+    autoSync: false,
+  });
+  expect(await requests[2].json()).toEqual({ intent: "manual_plan" });
+  expect(await requests[3].json()).toEqual({
+    name: "app",
+    environment: "production",
+    sourceId: "source-1",
+    installConfigId: "config-first-party",
   });
 });
 
-test("Git app revision helpers plan and apply an update with expected deployment guard", async () => {
+test("Capsule update plans through its Source and applies the reviewed Run", async () => {
   const requests: Request[] = [];
 
-  const plan = await planTakosMobileGitAppRevision({
+  const plan = await planTakosMobileCapsuleUpdate({
     session,
     spaceId: "me",
-    installationId: " inst-1 ",
-    gitUrl: "https://github.com/example/app.git",
-    ref: "main",
-    modulePath: "deploy",
+    capsuleId: " capsule-1 ",
+    sourceId: " source-1 ",
+    source: {
+      url: "https://github.com/example/app.git",
+      ref: "main",
+      path: "deploy",
+    },
     fetch: async (input, init) => {
       const request = new Request(input, init);
       requests.push(request.clone());
-      return json({
-        source: {
-          kind: "git",
-          url: "https://github.com/example/app.git",
-          ref: "main",
-          commit: "2222222222222222222222222222222222222222",
-        },
-        expected: {
-          commit: "2222222222222222222222222222222222222222",
-          planDigest: "sha256:def",
-          currentDeploymentId: "dep-1",
-        },
-      });
+      if (request.method === "PATCH")
+        return json({ source: { id: "source-1" } });
+      if (request.url.endsWith("/sync")) {
+        return json({ run: { id: "run-sync", status: "succeeded" } }, 202);
+      }
+      return json({ run: { id: "run-plan", status: "waiting_approval" } }, 202);
     },
   });
 
   await expect(
-    applyTakosMobileGitAppRevision({
+    applyTakosMobileCapsulePlan({
       session,
-      installationId: "inst-1",
       plan,
       fetch: async (input, init) => {
         const request = new Request(input, init);
         requests.push(request.clone());
-        return json({
-          kind: "takosumi.deployment-apply@v1",
-          status: "queued",
-        });
+        if (request.url.endsWith("/approve")) {
+          return json({ run: { id: "run-plan", status: "approved" } });
+        }
+        return json({ run: { id: "run-plan", status: "queued" } }, 202);
       },
     }),
   ).resolves.toEqual({
+    capsuleId: "capsule-1",
+    runId: "run-plan",
     status: "queued",
-    raw: {
-      kind: "takosumi.deployment-apply@v1",
-      status: "queued",
-    },
+    raw: { run: { id: "run-plan", status: "queued" } },
   });
 
   expect(requests.map((request) => `${request.method} ${request.url}`)).toEqual(
     [
-      "POST https://takos.test/api/spaces/me/app-installations/git-url/revision/plan",
-      "POST https://takos.test/api/spaces/me/app-installations/git-url/revision/apply",
+      "PATCH https://takos.test/api/spaces/me/sources/source-1",
+      "POST https://takos.test/api/spaces/me/sources/source-1/sync",
+      "POST https://takos.test/api/spaces/me/capsules/capsule-1/plan",
+      "POST https://takos.test/api/spaces/me/runs/run-plan/approve",
+      "POST https://takos.test/api/spaces/me/runs/run-plan/apply",
     ],
   );
   expect(await requests[0].json()).toEqual({
-    operation: "upgrade",
-    installation_id: "inst-1",
-    git_url: "https://github.com/example/app.git",
-    ref: "main",
-    module_path: "deploy",
-  });
-  expect(await requests[1].json()).toEqual({
-    git_url: "https://github.com/example/app.git",
-    ref: "main",
-    module_path: "deploy",
-    source_commit: "2222222222222222222222222222222222222222",
-    expected: {
-      commit: "2222222222222222222222222222222222222222",
-      planDigest: "sha256:def",
-      currentDeploymentId: "dep-1",
-    },
-    expected_commit: "2222222222222222222222222222222222222222",
-    expected_plan_digest: "sha256:def",
-    operation: "upgrade",
-    installation_id: "inst-1",
-    expected_current_deployment_id: "dep-1",
+    url: "https://github.com/example/app.git",
+    defaultRef: "main",
+    defaultPath: "deploy",
   });
 });
 
-test("removeTakosMobileAppInstallation deletes a host installation with a reason", async () => {
+test("removeTakosMobileCapsule requests a Takosumi destroy Run", async () => {
   const requests: Request[] = [];
 
   await expect(
-    removeTakosMobileAppInstallation({
+    removeTakosMobileCapsule({
       session,
       spaceId: "me",
-      installationId: " inst-1 ",
-      reason: " mobile remove ",
+      capsuleId: " capsule-1 ",
       fetch: async (input, init) => {
         requests.push(new Request(input, init));
         return json({
-          installation: {
-            id: "inst-1",
-            status: "suspended",
-          },
+          capsule: { id: "capsule-1" },
+          run: { id: "run-destroy", status: "waiting_approval" },
         });
       },
     }),
   ).resolves.toEqual({
-    installationId: "inst-1",
-    status: "suspended",
+    capsuleId: "capsule-1",
+    runId: "run-destroy",
+    status: "waiting_approval",
     raw: {
-      installation: {
-        id: "inst-1",
-        status: "suspended",
-      },
+      capsule: { id: "capsule-1" },
+      run: { id: "run-destroy", status: "waiting_approval" },
     },
   });
 
   expect(requests).toHaveLength(1);
   expect(requests[0].url).toBe(
-    "https://takos.test/api/spaces/me/app-installations/inst-1",
+    "https://takos.test/api/spaces/me/capsules/capsule-1",
   );
   expect(requests[0].method).toBe("DELETE");
   expect(requests[0].headers.get("authorization")).toBe("Bearer mobile-token");
-  expect(await requests[0].json()).toEqual({ reason: "mobile remove" });
 });
 
-test("Git app lifecycle helpers reject unsafe source input before posting", async () => {
+test("Capsule lifecycle helpers reject unsafe source input before posting", async () => {
   const fetcher = async () => {
     throw new Error("fetch should not be called");
   };
 
   await expect(
-    installTakosMobileGitApp({
+    installTakosMobileGitCapsule({
       session,
       spaceId: "me",
-      gitUrl: "http://github.com/example/app.git",
-      ref: "main",
+      source: {
+        url: "http://github.com/example/app.git",
+        ref: "main",
+        path: ".",
+      },
       fetch: fetcher,
     }),
   ).rejects.toThrow("Git URL must be an HTTPS URL without credentials.");
 
   await expect(
-    installTakosMobileGitApp({
+    installTakosMobileGitCapsule({
       session,
       spaceId: "me",
-      gitUrl: "https://github.com/example/app.git",
-      ref: "main",
-      modulePath: "../bad",
+      source: {
+        url: "https://github.com/example/app.git",
+        ref: "main",
+        path: "../bad",
+      },
       fetch: fetcher,
     }),
   ).rejects.toThrow("Module path must be repository-relative.");
@@ -1896,9 +2251,10 @@ test("unregisterTakosMobilePush deletes the product mobile push payload", async 
   });
 });
 
-function json(value: unknown): Promise<Response> {
+function json(value: unknown, status = 200): Promise<Response> {
   return Promise.resolve(
     new Response(JSON.stringify(value), {
+      status,
       headers: { "Content-Type": "application/json" },
     }),
   );

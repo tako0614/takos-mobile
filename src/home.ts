@@ -1,13 +1,14 @@
 import {
   createMobileApiClient,
+  MobileApiError,
   mobileNumber,
   mobileRecord,
   mobileOptionalText,
   type MobileSession,
 } from "@takosjp/takosumi-mobile-kit";
 import {
-  loadTakosMobileAppInstallations,
-  type TakosMobileAppInstallationPreview,
+  loadTakosMobileCapsules,
+  type TakosMobileCapsulePreview,
 } from "./apps.ts";
 import {
   loadTakosMobileThreadMessages,
@@ -19,7 +20,7 @@ import {
 } from "./notifications.ts";
 
 export type { TakosMobileThreadMessagePreview } from "./chat.ts";
-export type { TakosMobileAppInstallationPreview } from "./apps.ts";
+export type { TakosMobileCapsulePreview } from "./apps.ts";
 export type { TakosMobileNotificationPreview } from "./notifications.ts";
 
 export interface TakosMobileHome {
@@ -33,7 +34,7 @@ export interface TakosMobileHome {
   readonly agentTasks?: readonly TakosMobileAgentTaskPreview[];
   readonly memories?: readonly TakosMobileMemoryPreview[];
   readonly apps?: readonly TakosMobileAppPreview[];
-  readonly appInstallations?: readonly TakosMobileAppInstallationPreview[];
+  readonly capsules?: readonly TakosMobileCapsulePreview[];
   readonly recentNotifications?: readonly TakosMobileNotificationPreview[];
 }
 
@@ -53,13 +54,13 @@ export interface TakosMobileThreadPreview {
 
 export interface TakosMobileAppPreview {
   readonly id: string;
+  readonly interfaceId?: string;
   readonly name: string;
   readonly description?: string;
-  readonly appType?: string;
+  readonly category?: string;
   readonly spaceId?: string;
   readonly spaceName?: string;
   readonly status?: string;
-  readonly serviceHostname?: string;
   readonly launcherPath: string;
   readonly launchTarget: TakosMobileAppLaunchTarget;
 }
@@ -95,10 +96,9 @@ export async function loadTakosMobileHome(
   session: MobileSession,
 ): Promise<TakosMobileHome> {
   const client = createMobileApiClient({ session });
-  const [me, spaces, apps, unread, notifications] = await Promise.all([
+  const [me, spaces, unread, notifications] = await Promise.all([
     optionalJson<TakosMe>(() => client.json("/api/auth/me")),
     optionalJson<TakosSpaces>(() => client.json("/api/spaces")),
-    optionalJson<TakosApps>(() => client.json("/api/apps")),
     optionalJson<TakosUnread>(() =>
       client.json("/api/notifications/unread-count"),
     ),
@@ -110,32 +110,38 @@ export async function loadTakosMobileHome(
   let threads: TakosThreads | undefined;
   let agentTasks: TakosAgentTasks | undefined;
   let memories: TakosMemories | undefined;
-  let appInstallations:
-    readonly TakosMobileAppInstallationPreview[] | undefined;
+  let capsules: readonly TakosMobileCapsulePreview[] | undefined;
+  let launcherSurfaces: TakosApps | undefined;
   if (chatTarget) {
-    [threads, agentTasks, memories, appInstallations] = await Promise.all([
-      optionalJson<TakosThreads>(() =>
-        client.json(
-          `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/threads?status=active`,
+    [threads, agentTasks, memories, capsules, launcherSurfaces] =
+      await Promise.all([
+        optionalJson<TakosThreads>(() =>
+          client.json(
+            `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/threads?status=active`,
+          ),
         ),
-      ),
-      optionalJson<TakosAgentTasks>(() =>
-        client.json(
-          `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/agent-tasks?limit=4`,
+        optionalJson<TakosAgentTasks>(() =>
+          client.json(
+            `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/agent-tasks?limit=4`,
+          ),
         ),
-      ),
-      optionalJson<TakosMemories>(() =>
-        client.json(
-          `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/memories?limit=4`,
+        optionalJson<TakosMemories>(() =>
+          client.json(
+            `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/memories?limit=4`,
+          ),
         ),
-      ),
-      optionalJson(() =>
-        loadTakosMobileAppInstallations({
-          session,
-          spaceId: chatTarget.spaceId,
-        }),
-      ),
-    ]);
+        optionalJson(() =>
+          loadTakosMobileCapsules({
+            session,
+            spaceId: chatTarget.spaceId,
+          }),
+        ),
+        optionalJson<TakosApps>(() =>
+          client.json("/api/apps", {
+            headers: { "x-takos-space-id": chatTarget.spaceId },
+          }),
+        ),
+      ]);
   }
   const threadList =
     chatTarget && Array.isArray(threads?.threads)
@@ -160,7 +166,7 @@ export async function loadTakosMobileHome(
     workspaceCount: Array.isArray(spaces?.spaces)
       ? spaces.spaces.length
       : undefined,
-    appCount: Array.isArray(apps?.apps) ? apps.apps.length : undefined,
+    appCount: capsules?.length,
     unreadNotifications:
       typeof unread?.unread_count === "number"
         ? unread.unread_count
@@ -180,12 +186,15 @@ export async function loadTakosMobileHome(
             Boolean(memory),
           )
       : undefined,
-    apps: Array.isArray(apps?.apps)
-      ? apps.apps
-          .map((app) => summarizeApp(app, session.hostUrl))
-          .filter((app): app is TakosMobileAppPreview => Boolean(app))
+    apps: capsules
+      ? summarizeInstalledApps(
+          capsules,
+          launcherSurfaces?.apps,
+          session.hostUrl,
+          chatTarget,
+        )
       : undefined,
-    appInstallations,
+    capsules,
     recentNotifications: Array.isArray(notifications?.notifications)
       ? notifications.notifications
           .map((notification) => summarizeTakosMobileNotification(notification))
@@ -200,7 +209,13 @@ export async function loadTakosMobileHome(
 async function optionalJson<T>(load: () => Promise<T>): Promise<T | undefined> {
   try {
     return await load();
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof MobileApiError &&
+      (error.status === 401 || error.status === 403)
+    ) {
+      throw error;
+    }
     return undefined;
   }
 }
@@ -293,32 +308,78 @@ function summarizeMemory(
   };
 }
 
-function summarizeApp(
-  app: unknown,
+interface AuthorizedUiSurface {
+  readonly id: string;
+  readonly ownerId: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly category?: string;
+  readonly launchTarget: Exclude<
+    TakosMobileAppLaunchTarget,
+    { readonly kind: "unavailable" }
+  >;
+}
+
+function summarizeAuthorizedUiSurface(
+  value: unknown,
   hostUrl: string,
-): TakosMobileAppPreview | undefined {
-  if (!app || typeof app !== "object") return undefined;
-  const record = app as Record<string, unknown>;
+): AuthorizedUiSurface | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (
+    record.owner_kind !== "Capsule" ||
+    record.interface_type !== "interface.ui.surface" ||
+    record.interface_version !== "1"
+  ) {
+    return undefined;
+  }
   const id = mobileOptionalText(record.id);
+  const ownerId = mobileOptionalText(record.owner_id);
   const name = mobileOptionalText(record.name);
-  if (!id || !name) return undefined;
-  const spaceId =
-    mobileOptionalText(record.space_id) ?? mobileOptionalText(record.spaceId);
+  const launchTarget = readAppLaunchTarget(record.url, hostUrl);
+  if (!id || !ownerId || !name || launchTarget.kind === "unavailable") {
+    return undefined;
+  }
   return {
     id,
+    ownerId,
     name,
     description: mobileOptionalText(record.description)?.slice(0, 120),
-    appType:
-      mobileOptionalText(record.app_type) ?? mobileOptionalText(record.appType),
-    spaceId,
-    spaceName:
-      mobileOptionalText(record.space_name) ??
-      mobileOptionalText(record.spaceName),
-    status: mobileOptionalText(record.service_status),
-    serviceHostname: mobileOptionalText(record.service_hostname),
-    launcherPath: spaceId ? `/apps/${encodePathSegment(spaceId)}` : "/apps",
-    launchTarget: readAppLaunchTarget(record.url, hostUrl),
+    category: mobileOptionalText(record.category),
+    launchTarget,
   };
+}
+
+function summarizeInstalledApps(
+  capsules: readonly TakosMobileCapsulePreview[],
+  surfaceValues: readonly unknown[] | undefined,
+  hostUrl: string,
+  chatTarget: TakosMobileChatTarget | undefined,
+): readonly TakosMobileAppPreview[] {
+  const surfaceByCapsuleId = new Map<string, AuthorizedUiSurface>();
+  if (Array.isArray(surfaceValues)) {
+    for (const value of surfaceValues) {
+      const surface = summarizeAuthorizedUiSurface(value, hostUrl);
+      if (surface && !surfaceByCapsuleId.has(surface.ownerId)) {
+        surfaceByCapsuleId.set(surface.ownerId, surface);
+      }
+    }
+  }
+  return capsules.map((capsule) => {
+    const surface = surfaceByCapsuleId.get(capsule.id);
+    return {
+      id: capsule.id,
+      ...(surface ? { interfaceId: surface.id } : {}),
+      name: surface?.name ?? capsule.name,
+      ...(surface?.description ? { description: surface.description } : {}),
+      ...(surface?.category ? { category: surface.category } : {}),
+      spaceId: capsule.spaceId,
+      ...(chatTarget?.spaceName ? { spaceName: chatTarget.spaceName } : {}),
+      status: capsule.status,
+      launcherPath: capsule.routePath,
+      launchTarget: surface?.launchTarget ?? { kind: "unavailable" },
+    };
+  });
 }
 
 function summarizeChatTarget(
@@ -406,8 +467,7 @@ function readAppLaunchTarget(
     if (url.protocol !== "https:" && url.protocol !== "http:") {
       return { kind: "unavailable" };
     }
-    url.username = "";
-    url.password = "";
+    if (url.username || url.password) return { kind: "unavailable" };
     const host = new URL(hostUrl);
     if (url.origin === host.origin) {
       return {

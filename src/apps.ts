@@ -6,573 +6,64 @@ import {
   type MobileSession,
 } from "@takosjp/takosumi-mobile-kit";
 
-export type TakosMobileAppRevisionOperation = "upgrade" | "rollback";
+/** Canonical public Git pointer used by Takosumi Source/Capsule planning. */
+export interface TakosMobileGitAddress {
+  readonly url: string;
+  readonly ref: string;
+  readonly path: string;
+}
 
-export interface TakosMobileAppInstallationPreview {
+const DEFAULT_INSTALL_CONFIG_ID = "cfg-default-opentofu-capsule";
+const DEFAULT_INSTALL_CONFIG_NAME = "opentofu-capsule";
+
+export interface TakosMobileCapsulePreview {
   readonly id: string;
   readonly spaceId: string;
-  readonly appId?: string;
+  readonly sourceId: string;
   readonly name: string;
   readonly status?: string;
-  readonly gitUrl?: string;
-  readonly ref?: string;
-  readonly modulePath?: string;
-  readonly sourceCommit?: string;
-  readonly launchUrl?: string;
+  readonly source?: TakosMobileGitAddress;
   readonly routePath: string;
 }
 
-export interface LoadTakosMobileAppInstallationsInput {
-  readonly session: MobileSession;
+export interface TakosMobileGitCapsulePlan {
   readonly spaceId: string;
-  readonly fetch?: FetchLike;
-}
-
-export interface TakosMobileGitAppPlan {
-  readonly spaceId: string;
-  readonly gitUrl: string;
-  readonly ref: string;
-  readonly modulePath?: string;
-  readonly mode?: string;
-  readonly sourceCommit?: string;
-  readonly expected?: Record<string, unknown>;
-  readonly expectedCommit?: string;
-  readonly expectedPlanDigest?: string;
-  readonly expectedCurrentDeploymentId?: string | null;
-  readonly title?: string;
+  readonly sourceId: string;
+  readonly capsuleId: string;
+  readonly runId: string;
+  readonly runStatus: string;
+  readonly source: TakosMobileGitAddress;
+  readonly title: string;
   readonly raw: unknown;
 }
 
-export interface TakosMobileGitAppMutationResult {
-  readonly installationId?: string;
+export interface TakosMobileCapsuleMutationResult {
+  readonly capsuleId?: string;
+  readonly runId?: string;
   readonly status?: string;
   readonly raw: unknown;
 }
 
-export interface PlanTakosMobileGitAppInstallInput {
+type MobileControlInput = {
   readonly session: MobileSession;
+  readonly fetch?: FetchLike;
+};
+
+export interface PlanTakosMobileGitCapsuleInput extends MobileControlInput {
   readonly spaceId: string;
-  readonly gitUrl: string;
-  readonly ref: string;
-  readonly modulePath?: string;
+  readonly source: TakosMobileGitAddress;
   readonly variables?: Record<string, unknown>;
-  readonly fetch?: FetchLike;
 }
 
-export interface ApplyTakosMobileGitAppInstallInput {
-  readonly session: MobileSession;
-  readonly plan: TakosMobileGitAppPlan;
-  readonly mode?: string;
-  readonly variables?: Record<string, unknown>;
-  readonly fetch?: FetchLike;
-}
-
-export interface InstallTakosMobileGitAppInput extends PlanTakosMobileGitAppInstallInput {
-  readonly mode?: string;
-}
-
-export interface PlanTakosMobileGitAppRevisionInput {
-  readonly session: MobileSession;
+export interface PlanTakosMobileCapsuleUpdateInput extends MobileControlInput {
   readonly spaceId: string;
-  readonly installationId: string;
-  readonly operation?: TakosMobileAppRevisionOperation;
-  readonly gitUrl: string;
-  readonly ref: string;
-  readonly modulePath?: string;
-  readonly reason?: string;
-  readonly fetch?: FetchLike;
+  readonly capsuleId: string;
+  readonly sourceId: string;
+  readonly source: TakosMobileGitAddress;
 }
 
-export interface ApplyTakosMobileGitAppRevisionInput {
-  readonly session: MobileSession;
-  readonly installationId: string;
-  readonly operation?: TakosMobileAppRevisionOperation;
-  readonly plan: TakosMobileGitAppPlan;
-  readonly reason?: string;
-  readonly fetch?: FetchLike;
-}
-
-export interface RemoveTakosMobileAppInstallationInput {
-  readonly session: MobileSession;
-  readonly spaceId: string;
-  readonly installationId: string;
-  readonly reason?: string;
-  readonly fetch?: FetchLike;
-}
-
-export async function loadTakosMobileAppInstallations(
-  input: LoadTakosMobileAppInstallationsInput,
-): Promise<readonly TakosMobileAppInstallationPreview[]> {
-  const spaceId = requireTrimmed(input.spaceId, "Workspace is required.");
-  const client = createMobileApiClient({
-    session: input.session,
-    fetch: input.fetch,
-  });
-  const response = await client.json<{ readonly installations?: unknown[] }>(
-    `/api/spaces/${encodeURIComponent(spaceId)}/app-installations`,
-  );
-  return Array.isArray(response.installations)
-    ? response.installations
-        .map((item) => summarizeInstallation(item, spaceId))
-        .filter((item): item is TakosMobileAppInstallationPreview =>
-          Boolean(item),
-        )
-    : [];
-}
-
-export async function planTakosMobileGitAppInstall(
-  input: PlanTakosMobileGitAppInstallInput,
-): Promise<TakosMobileGitAppPlan> {
-  const source = normalizeGitSource(input);
-  const client = createMobileApiClient({
-    session: input.session,
-    fetch: input.fetch,
-  });
-  const response = await client.json(
-    `/api/spaces/${encodeURIComponent(source.spaceId)}/app-installations/git-url/plan`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        git_url: source.gitUrl,
-        ref: source.ref,
-        module_path: source.modulePath,
-        ...(input.variables ? { variables: input.variables } : {}),
-      }),
-    },
-  );
-  return summarizePlanResponse(response, source);
-}
-
-export async function applyTakosMobileGitAppInstall(
-  input: ApplyTakosMobileGitAppInstallInput,
-): Promise<TakosMobileGitAppMutationResult> {
-  const body = installApplyBody(input.plan, {
-    mode: input.mode,
-    variables: input.variables,
-  });
-  const client = createMobileApiClient({
-    session: input.session,
-    fetch: input.fetch,
-  });
-  const response = await client.json(
-    `/api/spaces/${encodeURIComponent(input.plan.spaceId)}/app-installations/git-url/apply`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
-  return summarizeMutationResponse(response);
-}
-
-export async function installTakosMobileGitApp(
-  input: InstallTakosMobileGitAppInput,
-): Promise<TakosMobileGitAppMutationResult> {
-  const plan = await planTakosMobileGitAppInstall(input);
-  return await applyTakosMobileGitAppInstall({
-    session: input.session,
-    plan,
-    mode: input.mode,
-    variables: input.variables,
-    fetch: input.fetch,
-  });
-}
-
-export async function planTakosMobileGitAppRevision(
-  input: PlanTakosMobileGitAppRevisionInput,
-): Promise<TakosMobileGitAppPlan> {
-  const source = normalizeGitSource(input);
-  const installationId = requireTrimmed(
-    input.installationId,
-    "Installation id is required.",
-  );
-  const operation = input.operation ?? "upgrade";
-  const client = createMobileApiClient({
-    session: input.session,
-    fetch: input.fetch,
-  });
-  const response = await client.json(
-    `/api/spaces/${encodeURIComponent(source.spaceId)}/app-installations/git-url/revision/plan`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        operation,
-        installation_id: installationId,
-        git_url: source.gitUrl,
-        ref: source.ref,
-        module_path: source.modulePath,
-        ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
-      }),
-    },
-  );
-  return summarizePlanResponse(response, source);
-}
-
-export async function applyTakosMobileGitAppRevision(
-  input: ApplyTakosMobileGitAppRevisionInput,
-): Promise<TakosMobileGitAppMutationResult> {
-  const installationId = requireTrimmed(
-    input.installationId,
-    "Installation id is required.",
-  );
-  const operation = input.operation ?? "upgrade";
-  const client = createMobileApiClient({
-    session: input.session,
-    fetch: input.fetch,
-  });
-  const response = await client.json(
-    `/api/spaces/${encodeURIComponent(input.plan.spaceId)}/app-installations/git-url/revision/apply`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(
-        revisionApplyBody(input.plan, {
-          installationId,
-          operation,
-          reason: input.reason,
-        }),
-      ),
-    },
-  );
-  return summarizeMutationResponse(response);
-}
-
-export async function removeTakosMobileAppInstallation(
-  input: RemoveTakosMobileAppInstallationInput,
-): Promise<TakosMobileGitAppMutationResult> {
-  const spaceId = requireTrimmed(input.spaceId, "Workspace is required.");
-  const installationId = requireTrimmed(
-    input.installationId,
-    "Installation id is required.",
-  );
-  const reason = input.reason?.trim();
-  const client = createMobileApiClient({
-    session: input.session,
-    fetch: input.fetch,
-  });
-  const response = await client.json(
-    `/api/spaces/${encodeURIComponent(spaceId)}/app-installations/${encodeURIComponent(
-      installationId,
-    )}`,
-    {
-      method: "DELETE",
-      ...(reason
-        ? {
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ reason }),
-          }
-        : {}),
-    },
-  );
-  return summarizeMutationResponse(response);
-}
-
-function normalizeGitSource(input: {
-  readonly spaceId: string;
-  readonly gitUrl: string;
-  readonly ref: string;
-  readonly modulePath?: string;
-}): {
-  readonly spaceId: string;
-  readonly gitUrl: string;
-  readonly ref: string;
-  readonly modulePath: string;
-} {
-  const spaceId = requireTrimmed(input.spaceId, "Workspace is required.");
-  const gitUrl = requireTrimmed(input.gitUrl, "Git URL is required.");
-  assertHttpsGitUrl(gitUrl);
-  const ref = requireTrimmed(input.ref, "Git ref is required.");
-  const modulePath = input.modulePath?.trim() || ".";
-  assertSafeModulePath(modulePath);
-  return { spaceId, gitUrl, ref, modulePath };
-}
-
-function installApplyBody(
-  plan: TakosMobileGitAppPlan,
-  options: {
-    readonly mode?: string;
-    readonly variables?: Record<string, unknown>;
-  },
-): Record<string, unknown> {
-  const body = guardedSourceBody(plan);
-  const mode = options.mode?.trim() || plan.mode;
-  if (mode) body.mode = mode;
-  if (options.variables) body.variables = options.variables;
-  body.cost_ack = true;
-  return body;
-}
-
-function revisionApplyBody(
-  plan: TakosMobileGitAppPlan,
-  options: {
-    readonly installationId: string;
-    readonly operation: TakosMobileAppRevisionOperation;
-    readonly reason?: string;
-  },
-): Record<string, unknown> {
-  const body = guardedSourceBody(plan);
-  body.operation = options.operation;
-  body.installation_id = options.installationId;
-  if (options.reason?.trim()) body.reason = options.reason.trim();
-  if (options.operation === "upgrade") {
-    if (plan.expectedCurrentDeploymentId !== undefined) {
-      body.expected_current_deployment_id = plan.expectedCurrentDeploymentId;
-    }
-  }
-  return body;
-}
-
-function guardedSourceBody(
-  plan: TakosMobileGitAppPlan,
-): Record<string, unknown> {
-  if (!plan.expected && (!plan.expectedCommit || !plan.expectedPlanDigest)) {
-    throw new Error("A host plan approval guard is required.");
-  }
-  return {
-    git_url: plan.gitUrl,
-    ref: plan.ref,
-    module_path: plan.modulePath ?? ".",
-    ...(plan.sourceCommit ? { source_commit: plan.sourceCommit } : {}),
-    ...(plan.expected ? { expected: plan.expected } : {}),
-    ...(plan.expectedCommit ? { expected_commit: plan.expectedCommit } : {}),
-    ...(plan.expectedPlanDigest
-      ? { expected_plan_digest: plan.expectedPlanDigest }
-      : {}),
-  };
-}
-
-function summarizePlanResponse(
-  response: unknown,
-  source: {
-    readonly spaceId: string;
-    readonly gitUrl: string;
-    readonly ref: string;
-    readonly modulePath: string;
-  },
-): TakosMobileGitAppPlan {
-  const record = mobileRecord(response) ?? {};
-  const expected = mobileRecord(record.expected);
-  const sourceRecord =
-    mobileRecord(record.source) ??
-    mobileRecord(mobileRecord(record.preview)?.next)?.source;
-  const previewNextSource = mobileRecord(
-    mobileRecord(mobileRecord(record.preview)?.next)?.source,
-  );
-  const sourceCommit =
-    mobileOptionalText(previewNextSource?.commit) ??
-    mobileOptionalText(mobileRecord(sourceRecord)?.commit);
-  const expectedCommit =
-    mobileOptionalText(expected?.commit) ??
-    sourceCommit ??
-    mobileOptionalText(record.commit);
-  const expectedPlanDigest =
-    mobileOptionalText(record.planDigest) ??
-    mobileOptionalText(expected?.planDigest);
-  const expectedCurrentDeploymentId = readExpectedCurrentDeploymentId(expected);
-  const runtime = mobileRecord(record.runtime);
-  const modes = runtime?.modes;
-  const mode = Array.isArray(modes) ? mobileOptionalText(modes[0]) : undefined;
-  return {
-    spaceId: source.spaceId,
-    gitUrl: source.gitUrl,
-    ref: source.ref,
-    modulePath: source.modulePath,
-    mode,
-    sourceCommit,
-    expected,
-    expectedCommit,
-    expectedPlanDigest,
-    ...(expectedCurrentDeploymentId.provided
-      ? { expectedCurrentDeploymentId: expectedCurrentDeploymentId.value }
-      : {}),
-    title:
-      readPathString(record, ["installPlan", "repo", "name"]) ??
-      readPathString(record, ["preview", "next", "name"]) ??
-      sourceDisplayNameFromUrl(source.gitUrl),
-    raw: response,
-  };
-}
-
-function summarizeMutationResponse(
-  response: unknown,
-): TakosMobileGitAppMutationResult {
-  const record = mobileRecord(response) ?? {};
-  const installationId =
-    readPathString(record, ["accounts", "installationId"]) ??
-    readPathString(record, ["accounts", "installation_id"]) ??
-    readPathString(record, ["installation", "id"]) ??
-    readPathString(record, ["installation", "installation_id"]) ??
-    mobileOptionalText(record.installationId) ??
-    mobileOptionalText(record.installation_id);
-  const status =
-    readPathString(record, ["accounts", "status"]) ??
-    readPathString(record, ["installation", "status"]) ??
-    mobileOptionalText(record.status);
-  return {
-    ...(installationId ? { installationId } : {}),
-    ...(status ? { status } : {}),
-    raw: response,
-  };
-}
-
-function summarizeInstallation(
-  value: unknown,
-  spaceId: string,
-): TakosMobileAppInstallationPreview | undefined {
-  const record = mobileRecord(value);
-  if (!record) return undefined;
-  const id =
-    mobileOptionalText(record.id) ??
-    mobileOptionalText(record.installation_id) ??
-    mobileOptionalText(record.installationId);
-  if (!id) return undefined;
-  const source = readInstallationGitSource(record);
-  const appId =
-    mobileOptionalText(record.app_id) ??
-    mobileOptionalText(record.appId) ??
-    readPathString(record, ["app", "id"]);
-  const launchUrl = readInstallationLaunchUrl(record);
-  const name =
-    mobileOptionalText(record.display_name) ??
-    mobileOptionalText(record.displayName) ??
-    mobileOptionalText(record.name) ??
-    mobileOptionalText(record.app_name) ??
-    mobileOptionalText(record.appName) ??
-    appId ??
-    sourceDisplayNameFromUrl(source.gitUrl) ??
-    id;
-  return {
-    id,
-    spaceId,
-    appId,
-    name,
-    status:
-      mobileOptionalText(record.status) ??
-      readPathString(record, ["installation", "status"]),
-    gitUrl: source.gitUrl,
-    ref: source.ref,
-    modulePath: source.modulePath,
-    sourceCommit: source.sourceCommit,
-    launchUrl,
-    routePath: `/installations/${encodeURIComponent(id)}`,
-  };
-}
-
-function readInstallationGitSource(record: Record<string, unknown>): {
-  readonly gitUrl?: string;
-  readonly ref?: string;
-  readonly modulePath?: string;
-  readonly sourceCommit?: string;
-} {
-  const source =
-    mobileRecord(record.source) ??
-    mobileRecord(record.git_source) ??
-    mobileRecord(record.gitSource) ??
-    mobileRecord(record.current_source) ??
-    mobileRecord(record.currentSource) ??
-    mobileRecord(mobileRecord(record.current_deployment)?.source) ??
-    mobileRecord(mobileRecord(record.currentDeployment)?.source) ??
-    mobileRecord(mobileRecord(record.latest_deployment)?.source) ??
-    mobileRecord(mobileRecord(record.latestDeployment)?.source);
-  const gitUrl =
-    mobileOptionalText(source?.url) ??
-    mobileOptionalText(source?.git_url) ??
-    mobileOptionalText(source?.gitUrl) ??
-    mobileOptionalText(record.git_url) ??
-    mobileOptionalText(record.gitUrl) ??
-    mobileOptionalText(record.repository_url) ??
-    mobileOptionalText(record.repositoryUrl);
-  const ref =
-    mobileOptionalText(source?.ref) ??
-    mobileOptionalText(source?.branch) ??
-    mobileOptionalText(source?.tag) ??
-    mobileOptionalText(record.ref) ??
-    mobileOptionalText(record.source_ref) ??
-    mobileOptionalText(record.sourceRef) ??
-    mobileOptionalText(record.installed_version) ??
-    mobileOptionalText(record.installedVersion);
-  const modulePath =
-    mobileOptionalText(source?.modulePath) ??
-    mobileOptionalText(source?.module_path) ??
-    mobileOptionalText(source?.path) ??
-    mobileOptionalText(record.module_path) ??
-    mobileOptionalText(record.modulePath);
-  const sourceCommit =
-    mobileOptionalText(source?.commit) ??
-    mobileOptionalText(record.source_commit) ??
-    mobileOptionalText(record.sourceCommit) ??
-    mobileOptionalText(record.installed_commit) ??
-    mobileOptionalText(record.installedCommit);
-  return { gitUrl, ref, modulePath, sourceCommit };
-}
-
-function readInstallationLaunchUrl(
-  record: Record<string, unknown>,
-): string | undefined {
-  const direct =
-    mobileOptionalText(record.launch_url) ??
-    mobileOptionalText(record.launchUrl) ??
-    readPathString(record, ["installation", "launch_url"]) ??
-    readPathString(record, ["installation", "launchUrl"]);
-  if (direct) return direct;
-  const services = record.services;
-  if (Array.isArray(services)) {
-    for (const service of services) {
-      const endpoint = mobileOptionalText(mobileRecord(service)?.endpoint);
-      if (endpoint) return endpoint;
-    }
-  }
-  const outputs = record.deployment_outputs;
-  if (Array.isArray(outputs)) {
-    for (const output of outputs) {
-      const outputRecord = mobileRecord(output);
-      const value = mobileOptionalText(outputRecord?.value);
-      if (value) return value;
-    }
-  }
-  return undefined;
-}
-
-function readExpectedCurrentDeploymentId(
-  expected: Record<string, unknown> | undefined,
-): { readonly provided: boolean; readonly value: string | null } {
-  if (
-    !expected ||
-    !Object.prototype.hasOwnProperty.call(expected, "currentDeploymentId")
-  ) {
-    return { provided: false, value: null };
-  }
-  const value = expected.currentDeploymentId;
-  if (value === null) return { provided: true, value: null };
-  return { provided: true, value: mobileOptionalText(value) ?? null };
-}
-
-function readPathString(
-  value: unknown,
-  path: readonly string[],
-): string | undefined {
-  let current: unknown = value;
-  for (const segment of path) {
-    const record = mobileRecord(current);
-    if (!record) return undefined;
-    current = record[segment];
-  }
-  return mobileOptionalText(current);
-}
-
-function sourceDisplayNameFromUrl(
-  gitUrl: string | undefined,
-): string | undefined {
-  if (!gitUrl) return undefined;
-  try {
-    const parsed = new URL(gitUrl);
-    const last = parsed.pathname.split("/").filter(Boolean).at(-1);
-    return last?.replace(/\.git$/i, "") || undefined;
-  } catch {
-    return undefined;
-  }
+function prefix(spaceId: string): string {
+  return `/api/spaces/${encodeURIComponent(spaceId)}`;
 }
 
 function requireTrimmed(value: string, message: string): string {
@@ -596,8 +87,432 @@ function assertHttpsGitUrl(gitUrl: string): void {
 function assertSafeModulePath(modulePath: string): void {
   if (
     modulePath.startsWith("/") ||
+    modulePath.includes("\\") ||
+    modulePath.includes("\0") ||
     modulePath.split("/").some((part) => part === "..")
   ) {
     throw new Error("Module path must be repository-relative.");
   }
+}
+
+function normalizedGitIdentity(value: unknown): string | null {
+  const input = mobileOptionalText(value);
+  if (!input) return null;
+  try {
+    const url = new URL(input);
+    if (
+      url.protocol !== "https:" ||
+      !url.hostname ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      url.search
+    ) {
+      return null;
+    }
+    url.hostname = url.hostname.toLowerCase();
+    url.pathname = url.pathname.replace(/\.git\/?$/iu, "").replace(/\/+$/u, "");
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function normalizedModulePath(value: string): string {
+  const path = value.trim() || ".";
+  assertSafeModulePath(path);
+  return path === "."
+    ? "."
+    : path.replace(/^\.\//u, "").replace(/\/+$/u, "") || ".";
+}
+
+function sourceName(gitUrl: string): string {
+  const parsed = new URL(gitUrl);
+  return (
+    parsed.pathname
+      .split("/")
+      .filter(Boolean)
+      .at(-1)
+      ?.replace(/\.git$/iu, "") || "capsule"
+  );
+}
+
+function normalizeGitAddress(
+  source: TakosMobileGitAddress,
+): TakosMobileGitAddress {
+  const url = requireTrimmed(source.url, "Git URL is required.");
+  assertHttpsGitUrl(url);
+  const ref = requireTrimmed(source.ref, "Git ref is required.");
+  const path = normalizedModulePath(source.path);
+  return { url, ref, path };
+}
+
+function runFrom(value: unknown): Record<string, unknown> {
+  const run = mobileRecord(mobileRecord(value)?.run);
+  if (!run || !mobileOptionalText(run.id)) {
+    throw new Error("Takosumi response is missing a Run.");
+  }
+  return run;
+}
+
+async function waitForRun(
+  client: ReturnType<typeof createMobileApiClient>,
+  spaceId: string,
+  initial: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  let run = initial;
+  let delayMs = 500;
+  const startedAt = Date.now();
+  for (;;) {
+    const status = mobileOptionalText(run.status) ?? "queued";
+    if (status === "succeeded" || status === "waiting_approval") return run;
+    if (["failed", "cancelled", "expired"].includes(status)) {
+      throw new Error(`Run ${mobileOptionalText(run.id) ?? ""} ${status}.`);
+    }
+    if (Date.now() - startedAt > 180_000) {
+      throw new Error(`Run is still ${status}.`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    delayMs = Math.min(Math.round(delayMs * 1.4), 3_000);
+    const runId = mobileOptionalText(run.id)!;
+    run = runFrom(
+      await client.json(`${prefix(spaceId)}/runs/${encodeURIComponent(runId)}`),
+    );
+  }
+}
+
+/**
+ * Select execution policy only from a Takosumi DB-owned InstallConfig.
+ * First-party configs are associated by the Store discovery identity
+ * (canonical Git URL + module path). Store ref hints never select execution
+ * policy; the explicit Source/Run owns the requested ref. Display names never
+ * associate a config with a source. Name matching is reserved for the stable
+ * generic OpenTofu fallback.
+ */
+export function selectTakosMobileInstallConfigId(
+  configs: readonly unknown[],
+  requested: TakosMobileGitAddress,
+): string | undefined {
+  const sourceAddress = normalizeGitAddress(requested);
+  const requestedGit = normalizedGitIdentity(sourceAddress.url);
+  const exactIds: string[] = [];
+  const parsed = configs
+    .map((value) => mobileRecord(value))
+    .filter((value): value is Record<string, unknown> => value !== null);
+
+  for (const config of parsed) {
+    const id = mobileOptionalText(config.id);
+    const source = mobileRecord(mobileRecord(config.store)?.source);
+    const git = mobileOptionalText(source?.url);
+    const path = mobileOptionalText(source?.path);
+    if (!id || !git || !path) continue;
+    let configuredPath: string;
+    try {
+      configuredPath = normalizedModulePath(path);
+    } catch {
+      continue;
+    }
+    if (
+      normalizedGitIdentity(git) === requestedGit &&
+      configuredPath === sourceAddress.path
+    ) {
+      exactIds.push(id);
+    }
+  }
+  if (exactIds.length > 1) {
+    throw new Error(
+      "Takosumi returned multiple InstallConfigs for the same canonical Git URL and module path.",
+    );
+  }
+  if (exactIds.length === 1) return exactIds[0];
+
+  const stableFallback = parsed.find(
+    (config) =>
+      mobileOptionalText(config.id) === DEFAULT_INSTALL_CONFIG_ID &&
+      !mobileRecord(config.store),
+  );
+  const stableFallbackId = mobileOptionalText(stableFallback?.id);
+  if (stableFallbackId) return stableFallbackId;
+
+  const namedFallback = parsed.find(
+    (config) =>
+      mobileOptionalText(config.name) === DEFAULT_INSTALL_CONFIG_NAME &&
+      Boolean(mobileOptionalText(config.id)) &&
+      !mobileRecord(config.store),
+  );
+  return mobileOptionalText(namedFallback?.id);
+}
+
+async function installConfigIdForGitAddress(
+  client: ReturnType<typeof createMobileApiClient>,
+  spaceId: string,
+  source: TakosMobileGitAddress,
+): Promise<string> {
+  const response = mobileRecord(
+    await client.json(`${prefix(spaceId)}/capsule-configs`),
+  );
+  const configs = response?.installConfigs;
+  if (!Array.isArray(configs)) {
+    throw new Error("Takosumi InstallConfig list is unavailable.");
+  }
+  const id = selectTakosMobileInstallConfigId(configs, source);
+  if (id) return id;
+  throw new Error(
+    "Takosumi has no InstallConfig matching this Git source and no generic fallback.",
+  );
+}
+
+export async function loadTakosMobileCapsules(
+  input: MobileControlInput & { readonly spaceId: string },
+): Promise<readonly TakosMobileCapsulePreview[]> {
+  const spaceId = requireTrimmed(input.spaceId, "Workspace is required.");
+  const client = createMobileApiClient({
+    session: input.session,
+    fetch: input.fetch,
+  });
+  const [capsuleEnvelope, sourceEnvelope] = await Promise.all([
+    client.json(`${prefix(spaceId)}/capsules`),
+    client.json(`${prefix(spaceId)}/sources`),
+  ]);
+  const sources = mobileRecord(sourceEnvelope)?.sources;
+  const sourcesById = new Map<string, Record<string, unknown>>();
+  if (Array.isArray(sources)) {
+    for (const value of sources) {
+      const source = mobileRecord(value);
+      const id = mobileOptionalText(source?.id);
+      if (source && id) sourcesById.set(id, source);
+    }
+  }
+  const capsules = mobileRecord(capsuleEnvelope)?.capsules;
+  if (!Array.isArray(capsules)) return [];
+  const out: TakosMobileCapsulePreview[] = [];
+  for (const value of capsules) {
+    const capsule = mobileRecord(value);
+    const id = mobileOptionalText(capsule?.id);
+    const sourceId = mobileOptionalText(capsule?.sourceId);
+    const name = mobileOptionalText(capsule?.name);
+    if (!id || !sourceId || !name) continue;
+    const source = sourcesById.get(sourceId);
+    const url = mobileOptionalText(source?.url);
+    const ref = mobileOptionalText(source?.defaultRef);
+    const path = mobileOptionalText(source?.defaultPath);
+    out.push({
+      id,
+      spaceId,
+      sourceId,
+      name,
+      status: mobileOptionalText(capsule?.status),
+      ...(url && ref && path ? { source: { url, ref, path } } : {}),
+      routePath: "/apps",
+    });
+  }
+  return out;
+}
+
+export async function planTakosMobileGitCapsule(
+  input: PlanTakosMobileGitCapsuleInput,
+): Promise<TakosMobileGitCapsulePlan> {
+  const spaceId = requireTrimmed(input.spaceId, "Workspace is required.");
+  const sourceAddress = normalizeGitAddress(input.source);
+  const client = createMobileApiClient({
+    session: input.session,
+    fetch: input.fetch,
+  });
+  const name = sourceName(sourceAddress.url);
+  const installConfigId = await installConfigIdForGitAddress(
+    client,
+    spaceId,
+    sourceAddress,
+  );
+  const sourceEnvelope = mobileRecord(
+    await client.json(`${prefix(spaceId)}/sources`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name,
+        url: sourceAddress.url,
+        defaultRef: sourceAddress.ref,
+        defaultPath: sourceAddress.path,
+        autoSync: false,
+      }),
+    }),
+  );
+  const source = mobileRecord(sourceEnvelope?.source);
+  const sourceId = mobileOptionalText(source?.id);
+  if (!sourceId) throw new Error("Takosumi response is missing a Source.");
+  const syncEnvelope = await client.json(
+    `${prefix(spaceId)}/sources/${encodeURIComponent(sourceId)}/sync`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ intent: "manual_plan" }),
+    },
+  );
+  await waitForRun(client, spaceId, runFrom(syncEnvelope));
+  const capsuleEnvelope = mobileRecord(
+    await client.json(`${prefix(spaceId)}/capsules`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name,
+        environment: "production",
+        sourceId,
+        installConfigId,
+        ...(sourceAddress.path !== "."
+          ? { modulePath: sourceAddress.path }
+          : {}),
+        ...(input.variables ? { vars: input.variables } : {}),
+      }),
+    }),
+  );
+  const capsule = mobileRecord(capsuleEnvelope?.capsule);
+  const capsuleId = mobileOptionalText(capsule?.id);
+  if (!capsuleId) throw new Error("Takosumi response is missing a Capsule.");
+  const planEnvelope = await client.json(
+    `${prefix(spaceId)}/capsules/${encodeURIComponent(capsuleId)}/plan`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    },
+  );
+  const run = await waitForRun(client, spaceId, runFrom(planEnvelope));
+  const runId = mobileOptionalText(run.id)!;
+  return {
+    spaceId,
+    sourceId,
+    capsuleId,
+    runId,
+    runStatus: mobileOptionalText(run.status) ?? "succeeded",
+    source: sourceAddress,
+    title: name,
+    raw: planEnvelope,
+  };
+}
+
+export async function applyTakosMobileCapsulePlan(
+  input: MobileControlInput & { readonly plan: TakosMobileGitCapsulePlan },
+): Promise<TakosMobileCapsuleMutationResult> {
+  const client = createMobileApiClient({
+    session: input.session,
+    fetch: input.fetch,
+  });
+  if (input.plan.runStatus === "waiting_approval") {
+    await client.json(
+      `${prefix(input.plan.spaceId)}/runs/${encodeURIComponent(input.plan.runId)}/approve`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: "Approved in Takos mobile" }),
+      },
+    );
+  }
+  const response = await client.json(
+    `${prefix(input.plan.spaceId)}/runs/${encodeURIComponent(input.plan.runId)}/apply`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    },
+  );
+  return summarizeMutation(response, input.plan.capsuleId);
+}
+
+export async function installTakosMobileGitCapsule(
+  input: PlanTakosMobileGitCapsuleInput,
+): Promise<TakosMobileCapsuleMutationResult> {
+  const plan = await planTakosMobileGitCapsule(input);
+  return await applyTakosMobileCapsulePlan({
+    session: input.session,
+    fetch: input.fetch,
+    plan,
+  });
+}
+
+export async function planTakosMobileCapsuleUpdate(
+  input: PlanTakosMobileCapsuleUpdateInput,
+): Promise<TakosMobileGitCapsulePlan> {
+  const spaceId = requireTrimmed(input.spaceId, "Workspace is required.");
+  const capsuleId = requireTrimmed(input.capsuleId, "Capsule id is required.");
+  const sourceId = requireTrimmed(input.sourceId, "Source id is required.");
+  const sourceAddress = normalizeGitAddress(input.source);
+  const client = createMobileApiClient({
+    session: input.session,
+    fetch: input.fetch,
+  });
+  await client.json(
+    `${prefix(spaceId)}/sources/${encodeURIComponent(sourceId)}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        url: sourceAddress.url,
+        defaultRef: sourceAddress.ref,
+        defaultPath: sourceAddress.path,
+      }),
+    },
+  );
+  const syncEnvelope = await client.json(
+    `${prefix(spaceId)}/sources/${encodeURIComponent(sourceId)}/sync`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ intent: "manual_plan" }),
+    },
+  );
+  await waitForRun(client, spaceId, runFrom(syncEnvelope));
+  const planEnvelope = await client.json(
+    `${prefix(spaceId)}/capsules/${encodeURIComponent(capsuleId)}/plan`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    },
+  );
+  const run = await waitForRun(client, spaceId, runFrom(planEnvelope));
+  return {
+    spaceId,
+    sourceId,
+    capsuleId,
+    runId: mobileOptionalText(run.id)!,
+    runStatus: mobileOptionalText(run.status) ?? "succeeded",
+    source: sourceAddress,
+    title: sourceName(sourceAddress.url),
+    raw: planEnvelope,
+  };
+}
+
+export async function removeTakosMobileCapsule(
+  input: MobileControlInput & {
+    readonly spaceId: string;
+    readonly capsuleId: string;
+  },
+): Promise<TakosMobileCapsuleMutationResult> {
+  const spaceId = requireTrimmed(input.spaceId, "Workspace is required.");
+  const capsuleId = requireTrimmed(input.capsuleId, "Capsule id is required.");
+  const client = createMobileApiClient({
+    session: input.session,
+    fetch: input.fetch,
+  });
+  const response = await client.json(
+    `${prefix(spaceId)}/capsules/${encodeURIComponent(capsuleId)}`,
+    { method: "DELETE" },
+  );
+  return summarizeMutation(response, capsuleId);
+}
+
+function summarizeMutation(
+  response: unknown,
+  fallbackCapsuleId?: string,
+): TakosMobileCapsuleMutationResult {
+  const record = mobileRecord(response) ?? {};
+  const capsule = mobileRecord(record.capsule);
+  const run = mobileRecord(record.run);
+  return {
+    capsuleId: mobileOptionalText(capsule?.id) ?? fallbackCapsuleId,
+    runId: mobileOptionalText(run?.id),
+    status:
+      mobileOptionalText(run?.status) ?? mobileOptionalText(capsule?.status),
+    raw: response,
+  };
 }

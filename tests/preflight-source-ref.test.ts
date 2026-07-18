@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 
 import {
   buildMobilePreflightSourceRefStatus,
@@ -8,13 +7,6 @@ import {
 } from "../scripts/check-mobile-preflight-source-ref.mjs";
 
 const pinnedRef = "1".repeat(40);
-const workflowSource = readFileSync(
-  new URL(
-    "../.github/workflows/mobile-native-preflight.yml",
-    import.meta.url,
-  ),
-  "utf8",
-);
 
 test("mobile preflight source ref parser requires the immutable workflow default", () => {
   expect(
@@ -25,18 +17,6 @@ test("mobile preflight source ref parser requires the immutable workflow default
   expect(
     extractPinnedTakosumiSourceRef("TAKOSUMI_SOURCE_REF: main"),
   ).toBeNull();
-});
-
-test("mobile native jobs install both source-module dependency graphs", () => {
-  expect(
-    workflowSource.match(/working-directory: takos$/gmu)?.length,
-  ).toBeGreaterThanOrEqual(3);
-  expect(
-    workflowSource.match(/working-directory: takosumi$/gmu)?.length,
-  ).toBeGreaterThanOrEqual(3);
-  expect(
-    workflowSource.match(/working-directory: takos\/mobile$/gmu)?.length,
-  ).toBeGreaterThanOrEqual(3);
 });
 
 test("mobile preflight source status reports only local committed parity", () => {

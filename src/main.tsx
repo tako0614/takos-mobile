@@ -23,12 +23,11 @@ import {
 import { productAdapter } from "./product.ts";
 import { createProductNativeBridge } from "./native.ts";
 import {
-  applyTakosMobileGitAppInstall,
-  applyTakosMobileGitAppRevision,
-  planTakosMobileGitAppInstall,
-  planTakosMobileGitAppRevision,
-  removeTakosMobileAppInstallation,
-  type TakosMobileGitAppPlan,
+  applyTakosMobileCapsulePlan,
+  planTakosMobileCapsuleUpdate,
+  planTakosMobileGitCapsule,
+  removeTakosMobileCapsule,
+  type TakosMobileGitCapsulePlan,
 } from "./apps.ts";
 import {
   createTakosMobileAgentTask,
@@ -130,7 +129,7 @@ renderMobileClientApp<TakosMobileHome>({
   homeLabel: "workspace",
   copy: {
     summary:
-      "Connect to an existing Takos host by URL, or create one through Takosumi Host Center.",
+      "Connect to an existing Takos host by URL or a trusted QR payload.",
     connectLabel: "Host URL or QR payload",
     discoveredHeading: "Discovered host",
     homeFallbackTitle: "Workspace",
@@ -199,13 +198,12 @@ renderMobileClientApp<TakosMobileHome>({
           />
         )}
       </Show>
-      <Show when={home?.appInstallations?.length}>
-        <AppInstallationsPreview
-          installations={home?.appInstallations}
+      <Show when={home?.capsules?.length}>
+        <CapsulesPreview
+          capsules={home?.capsules}
           session={session}
           refreshHome={refreshHome}
           openHostRoute={openHostRoute}
-          openExternalUrl={openExternalUrl}
         />
       </Show>
       <Show when={home?.chatTarget}>
@@ -266,8 +264,8 @@ type TakosMobileAppPreview = NonNullable<TakosMobileHome["apps"]>[number];
 
 type TakosMobileAppLaunchTarget = TakosMobileAppPreview["launchTarget"];
 
-type TakosMobileAppInstallationPreview = NonNullable<
-  TakosMobileHome["appInstallations"]
+type TakosMobileCapsulePreview = NonNullable<
+  TakosMobileHome["capsules"]
 >[number];
 
 interface AgentTaskActionState {
@@ -276,17 +274,15 @@ interface AgentTaskActionState {
   readonly loading?: TakosMobileAgentTaskStatus;
 }
 
-interface AppInstallationActionState {
+interface CapsuleActionState {
   readonly loading?: "plan" | "apply" | "remove";
   readonly message?: string;
-  readonly plan?: TakosMobileGitAppPlan;
+  readonly plan?: TakosMobileGitCapsulePlan;
 }
 
 function QuickAppInstallComposer(props: {
   readonly spaceId: string;
-  readonly session: Parameters<
-    typeof planTakosMobileGitAppInstall
-  >[0]["session"];
+  readonly session: Parameters<typeof planTakosMobileGitCapsule>[0]["session"];
   readonly refreshHome: () => Promise<void>;
   readonly openHostRoute: (path: string) => Promise<void>;
 }) {
@@ -294,10 +290,8 @@ function QuickAppInstallComposer(props: {
   const [ref, setRef] = createSignal("main");
   const [modulePath, setModulePath] = createSignal(".");
   const [status, setStatus] = createSignal("");
-  const [plan, setPlan] = createSignal<TakosMobileGitAppPlan | undefined>();
-  const [lastInstallationId, setLastInstallationId] = createSignal<
-    string | undefined
-  >();
+  const [plan, setPlan] = createSignal<TakosMobileGitCapsulePlan | undefined>();
+  const [lastCapsuleId, setLastCapsuleId] = createSignal<string | undefined>();
   const [action, setAction] = createSignal<"plan" | "apply" | undefined>();
   const canPlan = () =>
     canSubmitMobileText({ value: gitUrl(), disabled: Boolean(action()) }) &&
@@ -307,7 +301,7 @@ function QuickAppInstallComposer(props: {
 
   function resetPlan() {
     setPlan(undefined);
-    setLastInstallationId(undefined);
+    setLastCapsuleId(undefined);
   }
 
   async function submitPlan(event: SubmitEvent) {
@@ -317,12 +311,14 @@ function QuickAppInstallComposer(props: {
     setStatus("");
     resetPlan();
     try {
-      const nextPlan = await planTakosMobileGitAppInstall({
+      const nextPlan = await planTakosMobileGitCapsule({
         session: props.session,
         spaceId: props.spaceId,
-        gitUrl: gitUrl(),
-        ref: ref(),
-        modulePath: modulePath(),
+        source: {
+          url: gitUrl(),
+          ref: ref(),
+          path: modulePath(),
+        },
       });
       setPlan(nextPlan);
       setStatus(
@@ -341,7 +337,7 @@ function QuickAppInstallComposer(props: {
     setAction("apply");
     setStatus("");
     try {
-      const result = await applyTakosMobileGitAppInstall({
+      const result = await applyTakosMobileCapsulePlan({
         session: props.session,
         plan: currentPlan,
       });
@@ -352,7 +348,7 @@ function QuickAppInstallComposer(props: {
       );
       setPlan(undefined);
       setGitUrl("");
-      setLastInstallationId(result.installationId);
+      setLastCapsuleId(result.capsuleId);
       await props.refreshHome();
     } catch (error) {
       setStatus(mobileErrorMessage(error, "Failed to install app."));
@@ -365,10 +361,10 @@ function QuickAppInstallComposer(props: {
     <section class="compose-section" aria-label="Install app from Git URL">
       <h3>Install app</h3>
       <form
-        class="compose-form app-install-compose-form"
+        class="compose-form capsule-compose-form"
         onSubmit={(event) => void submitPlan(event)}
       >
-        <label class="compose-target app-install-url">
+        <label class="compose-target capsule-source-url">
           <span>Git URL</span>
           <input
             name="app-git-url"
@@ -408,7 +404,7 @@ function QuickAppInstallComposer(props: {
             }}
           />
         </label>
-        <div class="compose-footer app-install-footer">
+        <div class="compose-footer capsule-compose-footer">
           <button
             type="button"
             class="text-button"
@@ -416,7 +412,7 @@ function QuickAppInstallComposer(props: {
           >
             Host Center
           </button>
-          <div class="app-install-actions">
+          <div class="capsule-compose-actions">
             <button type="submit" class="text-button" disabled={!canPlan()}>
               {action() === "plan" ? "Planning" : "Plan"}
             </button>
@@ -432,12 +428,12 @@ function QuickAppInstallComposer(props: {
         </div>
         <Show when={plan()}>
           {(currentPlan) => (
-            <div class="app-install-plan" aria-label="Install plan">
+            <div class="capsule-plan" aria-label="Capsule plan">
               <strong>{currentPlan().title ?? "Planned app"}</strong>
               <small>
-                {currentPlan().ref}
-                {currentPlan().modulePath
-                  ? ` / ${currentPlan().modulePath}`
+                {currentPlan().source.ref}
+                {currentPlan().source.path
+                  ? ` / ${currentPlan().source.path}`
                   : ""}
               </small>
             </div>
@@ -446,60 +442,52 @@ function QuickAppInstallComposer(props: {
         <Show when={status()}>
           {(message) => <p class="status">{message()}</p>}
         </Show>
-        <Show when={lastInstallationId()}>
-          {(installationId) => (
-            <button
-              type="button"
-              class="text-button compose-open"
-              onClick={() =>
-                void props.openHostRoute(
-                  `/installations/${encodeURIComponent(installationId())}`,
-                )
-              }
-            >
-              Open install
-            </button>
-          )}
+        <Show when={Boolean(lastCapsuleId())}>
+          <button
+            type="button"
+            class="text-button compose-open"
+            onClick={() => void props.openHostRoute("/apps")}
+          >
+            Open Capsule
+          </button>
         </Show>
       </form>
     </section>
   );
 }
 
-function AppInstallationsPreview(props: {
-  readonly installations?: readonly TakosMobileAppInstallationPreview[];
+function CapsulesPreview(props: {
+  readonly capsules?: readonly TakosMobileCapsulePreview[];
   readonly session: Parameters<
-    typeof planTakosMobileGitAppRevision
+    typeof planTakosMobileCapsuleUpdate
   >[0]["session"];
   readonly refreshHome: () => Promise<void>;
   readonly openHostRoute: (path: string) => Promise<void>;
-  readonly openExternalUrl: (url: string) => Promise<void>;
 }) {
   return (
-    <section class="preview-section" aria-label="App installations">
+    <section class="preview-section" aria-label="Capsules">
       <div class="preview-section-toolbar">
         <div>
-          <h3>App installs</h3>
-          <small>{props.installations?.length ?? 0} managed</small>
+          <h3>Capsules</h3>
+          <small>{props.capsules?.length ?? 0} managed</small>
         </div>
         <button
           type="button"
           class="text-button"
-          onClick={() => void props.openHostRoute("/installations")}
+          onClick={() => void props.openHostRoute("/apps")}
         >
-          Open installs
+          Open apps
         </button>
       </div>
       <ul class="preview-list">
-        <For each={props.installations}>
-          {(installation) => (
+        <For each={props.capsules}>
+          {(capsule) => (
             <li>
-              <AppInstallationLifecycleCard
-                installation={installation}
+              <CapsuleLifecycleCard
+                capsule={capsule}
                 session={props.session}
                 refreshHome={props.refreshHome}
                 openHostRoute={props.openHostRoute}
-                openExternalUrl={props.openExternalUrl}
               />
             </li>
           )}
@@ -509,24 +497,23 @@ function AppInstallationsPreview(props: {
   );
 }
 
-function AppInstallationLifecycleCard(props: {
-  readonly installation: TakosMobileAppInstallationPreview;
+function CapsuleLifecycleCard(props: {
+  readonly capsule: TakosMobileCapsulePreview;
   readonly session: Parameters<
-    typeof planTakosMobileGitAppRevision
+    typeof planTakosMobileCapsuleUpdate
   >[0]["session"];
   readonly refreshHome: () => Promise<void>;
   readonly openHostRoute: (path: string) => Promise<void>;
-  readonly openExternalUrl: (url: string) => Promise<void>;
 }) {
-  const [state, setState] = createSignal<AppInstallationActionState>({});
+  const [state, setState] = createSignal<CapsuleActionState>({});
   const [updateRef, setUpdateRef] = createSignal(
-    props.installation.ref ?? "main",
+    props.capsule.source?.ref ?? "main",
   );
   const [modulePath, setModulePath] = createSignal(
-    props.installation.modulePath ?? ".",
+    props.capsule.source?.path ?? ".",
   );
   const canPlanUpdate = () =>
-    Boolean(props.installation.gitUrl) &&
+    Boolean(props.capsule.source) &&
     canSubmitMobileText({
       value: updateRef(),
       disabled: Boolean(state().loading),
@@ -537,19 +524,20 @@ function AppInstallationLifecycleCard(props: {
     });
 
   async function planUpdate() {
-    const gitUrl = props.installation.gitUrl;
-    if (!gitUrl || !canPlanUpdate()) return;
+    const source = props.capsule.source;
+    if (!source || !canPlanUpdate()) return;
     setState({ loading: "plan" });
     try {
-      const plan = await planTakosMobileGitAppRevision({
+      const plan = await planTakosMobileCapsuleUpdate({
         session: props.session,
-        spaceId: props.installation.spaceId,
-        installationId: props.installation.id,
-        operation: "upgrade",
-        gitUrl,
-        ref: updateRef(),
-        modulePath: modulePath(),
-        reason: "mobile update",
+        spaceId: props.capsule.spaceId,
+        capsuleId: props.capsule.id,
+        sourceId: props.capsule.sourceId,
+        source: {
+          url: source.url,
+          ref: updateRef(),
+          path: modulePath(),
+        },
       });
       setState({ plan, message: "Plan ready." });
     } catch (error) {
@@ -564,12 +552,9 @@ function AppInstallationLifecycleCard(props: {
     if (!plan || state().loading) return;
     setState((current) => ({ ...current, loading: "apply" }));
     try {
-      const result = await applyTakosMobileGitAppRevision({
+      const result = await applyTakosMobileCapsulePlan({
         session: props.session,
-        installationId: props.installation.id,
-        operation: "upgrade",
         plan,
-        reason: "mobile update",
       });
       setState({
         message: result.status
@@ -586,147 +571,114 @@ function AppInstallationLifecycleCard(props: {
     }
   }
 
-  async function removeInstallation() {
+  async function removeCapsule() {
     if (state().loading) return;
-    if (
-      !confirmMobileAction({
-        message: `Remove ${props.installation.name}?`,
-      })
-    ) {
+    if (!confirmMobileAction({ message: `Remove ${props.capsule.name}?` })) {
       return;
     }
     setState({ loading: "remove" });
     try {
-      const result = await removeTakosMobileAppInstallation({
+      const result = await removeTakosMobileCapsule({
         session: props.session,
-        spaceId: props.installation.spaceId,
-        installationId: props.installation.id,
-        reason: "mobile remove",
+        spaceId: props.capsule.spaceId,
+        capsuleId: props.capsule.id,
       });
       setState({
         message: result.status
           ? `Remove ${formatStatus(result.status)}.`
-          : "Remove queued.",
+          : "Destroy plan queued.",
       });
       await props.refreshHome();
     } catch (error) {
       setState({
-        message: mobileErrorMessage(error, "Failed to remove app."),
+        message: mobileErrorMessage(error, "Failed to remove Capsule."),
       });
     }
   }
 
   return (
-    <div class="preview-item app-installation-card">
+    <div class="preview-item capsule-card">
       <div class="preview-content">
-        <strong>{props.installation.name}</strong>
+        <strong>{props.capsule.name}</strong>
         <div class="preview-inline-meta">
-          <Show when={props.installation.appId}>
-            {(appId) => <span>{appId()}</span>}
-          </Show>
-          <Show when={props.installation.gitUrl}>
+          <Show when={props.capsule.source?.url}>
             {(gitUrl) => <span>{sourceDisplayName(gitUrl())}</span>}
-          </Show>
-          <Show when={props.installation.launchUrl}>
-            {(launchUrl) => <span>{displayUrlHost(launchUrl())}</span>}
           </Show>
         </div>
       </div>
       <div class="preview-badge-stack">
-        <Show when={props.installation.status}>
+        <Show when={props.capsule.status}>
           {(status) => (
             <span class="preview-badge">{formatStatus(status())}</span>
           )}
         </Show>
-        <Show when={props.installation.ref}>
+        <Show when={props.capsule.source?.ref}>
           {(ref) => (
             <span class="preview-badge preview-badge-muted">{ref()}</span>
           )}
         </Show>
       </div>
-      <Show when={props.installation.gitUrl}>
-        <div class="app-installation-update">
-          <label class="compose-target">
-            <span>Update ref</span>
-            <input
-              name={`update-ref-${props.installation.id}`}
-              value={updateRef()}
-              disabled={Boolean(state().loading)}
-              onInput={(event) => {
-                setUpdateRef(event.currentTarget.value);
-                setState((current) => ({ ...current, plan: undefined }));
-              }}
-            />
-          </label>
-          <label class="compose-target">
-            <span>Path</span>
-            <input
-              name={`update-path-${props.installation.id}`}
-              value={modulePath()}
-              disabled={Boolean(state().loading)}
-              onInput={(event) => {
-                setModulePath(event.currentTarget.value);
-                setState((current) => ({ ...current, plan: undefined }));
-              }}
-            />
-          </label>
-        </div>
-      </Show>
-      <div class="app-installation-actions">
-        <Show when={props.installation.launchUrl}>
-          {(launchUrl) => (
-            <button
-              type="button"
-              class="text-button"
-              onClick={() =>
-                void openAppInstallationLaunchUrl(
-                  launchUrl(),
-                  props.session.hostUrl,
-                  props.openHostRoute,
-                  props.openExternalUrl,
-                )
-              }
-            >
-              Open
-            </button>
-          )}
-        </Show>
+      <div class="capsule-update">
+        <label class="compose-target">
+          <span>Update ref</span>
+          <input
+            name={`update-ref-${props.capsule.id}`}
+            value={updateRef()}
+            disabled={Boolean(state().loading)}
+            onInput={(event) => {
+              setUpdateRef(event.currentTarget.value);
+              setState((current) => ({ ...current, plan: undefined }));
+            }}
+          />
+        </label>
+        <label class="compose-target">
+          <span>Path</span>
+          <input
+            name={`update-path-${props.capsule.id}`}
+            value={modulePath()}
+            disabled={Boolean(state().loading)}
+            onInput={(event) => {
+              setModulePath(event.currentTarget.value);
+              setState((current) => ({ ...current, plan: undefined }));
+            }}
+          />
+        </label>
+      </div>
+      <div class="capsule-actions">
         <button
           type="button"
           class="text-button"
-          onClick={() => void props.openHostRoute(props.installation.routePath)}
+          onClick={() => void props.openHostRoute(props.capsule.routePath)}
         >
           Details
         </button>
-        <Show when={props.installation.gitUrl}>
-          <button
-            type="button"
-            class="text-button"
-            disabled={!canPlanUpdate()}
-            onClick={() => void planUpdate()}
-          >
-            {state().loading === "plan" ? "Planning" : "Plan update"}
-          </button>
-          <button
-            type="button"
-            class="text-button"
-            disabled={!state().plan || Boolean(state().loading)}
-            onClick={() => void applyUpdate()}
-          >
-            {state().loading === "apply" ? "Applying" : "Apply update"}
-          </button>
-        </Show>
+        <button
+          type="button"
+          class="text-button"
+          disabled={!canPlanUpdate()}
+          onClick={() => void planUpdate()}
+        >
+          {state().loading === "plan" ? "Planning" : "Plan update"}
+        </button>
+        <button
+          type="button"
+          class="text-button"
+          disabled={!state().plan || Boolean(state().loading)}
+          onClick={() => void applyUpdate()}
+        >
+          {state().loading === "apply" ? "Applying" : "Apply update"}
+        </button>
         <button
           type="button"
           class="text-button"
           disabled={Boolean(state().loading)}
-          onClick={() => void removeInstallation()}
+          onClick={() => void removeCapsule()}
         >
           {state().loading === "remove" ? "Removing" : "Remove"}
         </button>
         <Show when={state().message}>
           {(message) => (
-            <small class="app-installation-action-status">{message()}</small>
+            <small class="capsule-action-status">{message()}</small>
           )}
         </Show>
       </div>
@@ -2852,6 +2804,7 @@ function NotificationSettingsPreview(props: {
       <div class="preview-section-toolbar">
         <div>
           <h3>Notification settings</h3>
+          <small>Push is limited to Agent run completion and failure.</small>
           <Show
             when={state().mutedUntil}
             fallback={<small>Alerts active</small>}
@@ -3096,11 +3049,8 @@ function AppPreviewContent(props: { readonly app: TakosMobileAppPreview }) {
           <Show when={props.app.spaceName}>
             {(spaceName) => <span>{spaceName()}</span>}
           </Show>
-          <Show when={props.app.appType}>
-            {(appType) => <span>{formatStatus(appType())}</span>}
-          </Show>
-          <Show when={props.app.serviceHostname}>
-            {(hostname) => <span>{hostname()}</span>}
+          <Show when={props.app.category}>
+            {(category) => <span>{formatStatus(category())}</span>}
           </Show>
         </div>
       </div>
@@ -3163,47 +3113,12 @@ function formatAppLaunchBadge(target: TakosMobileAppLaunchTarget): string {
   }
 }
 
-async function openAppInstallationLaunchUrl(
-  launchUrl: string,
-  hostUrl: string,
-  openHostRoute: (path: string) => Promise<void>,
-  openExternalUrl: (url: string) => Promise<void>,
-): Promise<void> {
-  const raw = launchUrl.trim();
-  if (!raw) return;
-  if (raw.startsWith("/") && !raw.startsWith("//")) {
-    await openHostRoute(raw);
-    return;
-  }
-  try {
-    const url = new URL(raw);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return;
-    const host = new URL(hostUrl);
-    if (url.origin === host.origin) {
-      await openHostRoute(`${url.pathname}${url.search}${url.hash}`);
-      return;
-    }
-    await openExternalUrl(url.toString());
-  } catch {
-    return;
-  }
-}
-
 function sourceDisplayName(gitUrl: string): string {
   try {
     const parsed = new URL(gitUrl);
     return parsed.pathname.split("/").filter(Boolean).at(-1) ?? gitUrl;
   } catch {
     return gitUrl;
-  }
-}
-
-function displayUrlHost(value: string): string {
-  try {
-    const parsed = new URL(value);
-    return parsed.host || value;
-  } catch {
-    return value;
   }
 }
 

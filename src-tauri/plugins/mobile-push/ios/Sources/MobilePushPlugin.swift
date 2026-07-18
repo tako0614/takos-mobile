@@ -1,5 +1,6 @@
 import Foundation
 import ObjectiveC
+import Security
 import Tauri
 import UIKit
 import UserNotifications
@@ -407,8 +408,9 @@ private func coercePushValue(_ value: Any) -> JSValue? {
 }
 
 private func apnsEnvironment() -> String? {
-    guard let value = Bundle.main.object(
-        forInfoDictionaryKey: "TauriMobilePushAPNSEnvironment") as? String else {
+    guard let task = SecTaskCreateFromSelf(nil),
+          let value = SecTaskCopyValueForEntitlement(
+              task, "aps-environment" as CFString, nil) as? String else {
         return nil
     }
     switch value {

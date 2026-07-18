@@ -1,4 +1,4 @@
-@import "../../../takosumi/mobile-kit/src/mobile-shell.css";
+@import "../../takosumi/mobile-kit/src/mobile-shell.css";
 
 :root {
   --shell-text: #172017;
@@ -16,26 +16,26 @@
 }
 
 .memory-compose-form,
-.app-install-compose-form,
+.capsule-compose-form,
 .task-compose-form {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
-.app-install-compose-form {
+.capsule-compose-form {
   grid-template-columns: minmax(0, 1fr) minmax(84px, 0.3fr) minmax(76px, 0.24fr);
 }
 
-.app-install-url,
-.app-install-compose-form .status,
-.app-install-compose-form .compose-open {
+.capsule-source-url,
+.capsule-compose-form .status,
+.capsule-compose-form .compose-open {
   grid-column: 1 / -1;
 }
 
-.app-install-footer {
+.capsule-compose-footer {
   grid-column: 1 / -1;
 }
 
-.app-install-actions {
+.capsule-compose-actions {
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
@@ -43,13 +43,13 @@
   justify-content: flex-end;
 }
 
-.app-install-actions .text-button,
-.app-install-actions .primary {
+.capsule-compose-actions .text-button,
+.capsule-compose-actions .primary {
   min-width: 78px;
   justify-content: center;
 }
 
-.app-install-plan {
+.capsule-plan {
   display: grid;
   grid-column: 1 / -1;
   gap: 3px;
@@ -59,14 +59,14 @@
   background: var(--shell-soft);
 }
 
-.app-install-plan strong {
+.capsule-plan strong {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--shell-text);
   font-size: 0.84rem;
 }
 
-.app-install-plan small {
+.capsule-plan small {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--shell-subtle);
@@ -87,7 +87,7 @@
 
 @media (max-width: 520px) {
   .memory-compose-form,
-  .app-install-compose-form,
+  .capsule-compose-form,
   .task-compose-form {
     grid-template-columns: 1fr;
   }
@@ -283,18 +283,18 @@
   justify-self: start;
 }
 
-.app-installation-card {
+.capsule-card {
   display: grid;
   gap: 10px;
 }
 
-.app-installation-update {
+.capsule-update {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(82px, 0.32fr);
   gap: 8px;
 }
 
-.app-installation-actions {
+.capsule-actions {
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
@@ -302,12 +302,12 @@
   align-items: center;
 }
 
-.app-installation-actions .text-button {
+.capsule-actions .text-button {
   min-width: 78px;
   justify-content: center;
 }
 
-.app-installation-action-status {
+.capsule-action-status {
   min-width: 0;
   color: var(--shell-subtle);
   font-size: 0.74rem;
@@ -327,7 +327,7 @@
     justify-content: flex-start;
   }
 
-  .app-installation-update {
+  .capsule-update {
     grid-template-columns: 1fr;
   }
 }
