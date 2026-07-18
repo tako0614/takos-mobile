@@ -7,7 +7,7 @@ import {
   formatMobilePreviewDate,
   mobileErrorMessage,
   mobileTextRemaining,
-} from "@takosjp/takosumi-mobile-kit";
+} from "@takosjp/mobile-kit";
 import {
   defineMobileHostActions,
   MobileComposeField,
@@ -19,7 +19,7 @@ import {
   MobilePreviewSection,
   renderMobileClientApp,
   type MobileShellMetric,
-} from "@takosjp/takosumi-mobile-kit/solid";
+} from "@takosjp/mobile-kit/solid";
 import { productAdapter } from "./product.ts";
 import { createProductNativeBridge } from "./native.ts";
 import {

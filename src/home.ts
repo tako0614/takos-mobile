@@ -5,7 +5,7 @@ import {
   mobileRecord,
   mobileOptionalText,
   type MobileSession,
-} from "@takosjp/takosumi-mobile-kit";
+} from "@takosjp/mobile-kit";
 import {
   loadTakosMobileCapsules,
   type TakosMobileCapsulePreview,

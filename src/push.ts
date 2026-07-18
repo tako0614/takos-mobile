@@ -6,7 +6,7 @@ import {
   type FetchLike,
   type MobilePushRegistrationCallbackInput,
   type NotificationPusher,
-} from "@takosjp/takosumi-mobile-kit";
+} from "@takosjp/mobile-kit";
 
 export const TAKOS_MOBILE_NOTIFICATION_PUSHER_PATH =
   NOTIFICATION_PUSHER_REGISTRATION_PATH;

@@ -4,7 +4,7 @@ import {
   mobileOptionalText,
   type FetchLike,
   type MobileSession,
-} from "@takosjp/takosumi-mobile-kit";
+} from "@takosjp/mobile-kit";
 import type { TakosMobileMemoryPreview } from "./home.ts";
 
 export interface CreateTakosMobileMemoryInput {

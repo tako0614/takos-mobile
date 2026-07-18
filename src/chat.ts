@@ -7,7 +7,7 @@ import {
   hostEndpoint,
   type FetchLike,
   type MobileSession,
-} from "@takosjp/takosumi-mobile-kit";
+} from "@takosjp/mobile-kit";
 
 export const DEFAULT_TAKOS_MOBILE_MODEL = "gpt-5.5";
 

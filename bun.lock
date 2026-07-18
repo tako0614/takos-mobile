@@ -5,7 +5,7 @@
     "": {
       "name": "@takos/takos-mobile",
       "dependencies": {
-        "@takosjp/takosumi-mobile-kit": "file:../takosumi/mobile-kit",
+        "@takosjp/mobile-kit": "file:../mobile-kit",
         "@tauri-apps/api": "^2.11.1",
         "@tauri-apps/plugin-barcode-scanner": "^2.4.5",
         "@tauri-apps/plugin-biometric": "^2.3.2",
@@ -17,12 +17,9 @@
         "@tauri-apps/plugin-store": "^2.4.3",
         "@tauri-apps/plugin-stronghold": "^2.3.1",
         "solid-js": "^1.9.13",
-        "takosumi-contract": "file:../takosumi/contract",
       },
       "devDependencies": {
         "@tauri-apps/cli": "^2.11.4",
-        "@types/bun": "^1.2.0",
-        "@types/node": "^24.0.0",
         "typescript": "^5.7.0",
         "vite": "^8.0.14",
         "vite-plugin-solid": "^2.11.12",
@@ -118,7 +115,7 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
-    "@takosjp/takosumi-mobile-kit": ["@takosjp/takosumi-mobile-kit@file:../takosumi/mobile-kit", { "devDependencies": { "@types/bun": "^1.2.0", "solid-js": "^1.9.13", "typescript": "^5.7.0" }, "peerDependencies": { "solid-js": "^1.9.0" } }],
+    "@takosjp/mobile-kit": ["@takosjp/mobile-kit@file:../mobile-kit", { "devDependencies": { "@types/bun": "^1.2.0", "solid-js": "^1.9.13", "typescript": "^5.7.0" }, "peerDependencies": { "solid-js": "^1.9.0" } }],
 
     "@tauri-apps/api": ["@tauri-apps/api@2.11.1", "", {}, "sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA=="],
 
@@ -275,8 +272,6 @@
     "solid-refresh": ["solid-refresh@0.6.3", "", { "dependencies": { "@babel/generator": "^7.23.6", "@babel/helper-module-imports": "^7.22.15", "@babel/types": "^7.23.6" }, "peerDependencies": { "solid-js": "^1.3" } }, "sha512-F3aPsX6hVw9ttm5LYlth8Q15x6MlI/J3Dn+o3EQyRTtTxidepSTwAYdozt01/YA+7ObcciagGEyXIopGZzQtbA=="],
 
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
-
-    "takosumi-contract": ["takosumi-contract@file:../takosumi/contract", {}],
 
     "tinyglobby": ["tinyglobby@0.2.17", "", { "dependencies": { "fdir": "^6.5.0", "picomatch": "^4.0.4" } }, "sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g=="],
 

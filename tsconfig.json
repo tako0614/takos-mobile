@@ -4,14 +4,23 @@
     "module": "Preserve",
     "moduleResolution": "bundler",
     "target": "ESNext",
-    "types": ["node", "bun", "vite/client"],
+    "types": ["node"],
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "strict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@takosjp/mobile-kit": [
+        "../mobile-kit/src/index.ts"
+      ],
+      "@takosjp/mobile-kit/solid": [
+        "../mobile-kit/src/solid.ts"
+      ]
+    }
   },
   "include": ["src"]
 }

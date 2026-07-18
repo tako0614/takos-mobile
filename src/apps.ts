@@ -4,7 +4,7 @@ import {
   mobileOptionalText,
   type FetchLike,
   type MobileSession,
-} from "@takosjp/takosumi-mobile-kit";
+} from "@takosjp/mobile-kit";
 
 /** Canonical public Git pointer used by Takosumi Source/Capsule planning. */
 export interface TakosMobileGitAddress {

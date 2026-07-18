@@ -1,4 +1,4 @@
-@import "../../takosumi/mobile-kit/src/mobile-shell.css";
+@import "../mobile-kit/src/mobile-shell.css";
 
 :root {
   --shell-text: #172017;
