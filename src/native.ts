@@ -1,9 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { appDataDir, join } from "@tauri-apps/api/path";
-import { scan, Format } from "@tauri-apps/plugin-barcode-scanner";
+import {
+  checkPermissions,
+  Format,
+  requestPermissions,
+  scan,
+} from "@tauri-apps/plugin-barcode-scanner";
 import { authenticate } from "@tauri-apps/plugin-biometric";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import {
   isPermissionGranted,
   requestPermission,
@@ -15,6 +21,7 @@ import { load } from "@tauri-apps/plugin-store";
 import { Stronghold } from "@tauri-apps/plugin-stronghold";
 import {
   createTauriMobileDefaultProductBridge,
+  detectTauriRuntime,
   type NativeBridge,
   type TauriPushNotificationsAdapter,
 } from "@takosjp/mobile-kit";
@@ -28,6 +35,10 @@ export interface ProductNativeBridgeOptions {
 export function createProductNativeBridge(
   options: ProductNativeBridgeOptions = {},
 ): NativeBridge {
+  // Host traffic must leave the native side, not the WebView: the WebView
+  // origin is `tauri://` / `http://tauri.localhost`, which no Takos host
+  // allows through CORS.
+  if (detectTauriRuntime()) globalThis.fetch = tauriFetch as typeof fetch;
   const opener = { openUrl };
   const store = { load };
   return createTauriMobileDefaultProductBridge({
@@ -56,6 +67,8 @@ export function createProductNativeBridge(
     barcodeScanner: {
       scan,
       qrCodeFormat: Format.QRCode,
+      checkPermissions,
+      requestPermissions,
     },
     pushNotifications: options.pushNotifications,
     mobilePush: takosMobilePushPlugin,

@@ -128,6 +128,9 @@ renderMobileClientApp<TakosMobileHome>({
   },
   homeLabel: "workspace",
   copy: {
+    // The Takos octopus mark, mirrored from this shell's own app icon, so the
+    // onboarding shows the product logo instead of an "T" initial.
+    brandLogoUrl: "/brand/takos.png",
     summary:
       "Connect to an existing Takos host by URL or a trusted QR payload.",
     connectLabel: "Host URL or QR payload",

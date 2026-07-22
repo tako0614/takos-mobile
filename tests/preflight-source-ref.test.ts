@@ -2,27 +2,27 @@ import { expect, test } from "bun:test";
 
 import {
   buildMobilePreflightSourceRefStatus,
-  extractPinnedTakosumiSourceRef,
-  REQUIRED_TAKOSUMI_MOBILE_PATHS,
+  extractPinnedMobileKitSourceRef,
+  REQUIRED_MOBILE_KIT_PATHS,
 } from "../scripts/check-mobile-preflight-source-ref.mjs";
 
 const pinnedRef = "1".repeat(40);
 
 test("mobile preflight source ref parser requires the immutable workflow default", () => {
   expect(
-    extractPinnedTakosumiSourceRef(
-      `TAKOSUMI_SOURCE_REF: \${{ inputs.ref || '${pinnedRef}' }}`,
+    extractPinnedMobileKitSourceRef(
+      `MOBILE_KIT_SOURCE_REF: \${{ inputs.ref || '${pinnedRef}' }}`,
     ),
   ).toBe(pinnedRef);
   expect(
-    extractPinnedTakosumiSourceRef("TAKOSUMI_SOURCE_REF: main"),
+    extractPinnedMobileKitSourceRef("MOBILE_KIT_SOURCE_REF: main"),
   ).toBeNull();
 });
 
 test("mobile preflight source status reports only local committed parity", () => {
   const status = buildMobilePreflightSourceRefStatus({
     pinnedRef,
-    takosumiHead: pinnedRef,
+    mobileKitHead: pinnedRef,
   });
 
   expect(status).toMatchObject({
@@ -37,15 +37,15 @@ test("mobile preflight source status reports only local committed parity", () =>
     blockers: [],
   });
   expect(status).not.toHaveProperty("ready");
-  expect(status.requiredPaths).toEqual([...REQUIRED_TAKOSUMI_MOBILE_PATHS]);
+  expect(status.requiredPaths).toEqual([...REQUIRED_MOBILE_KIT_PATHS]);
 });
 
 test("mobile preflight source status exposes one repo-owned pending blocker", () => {
   const head = "2".repeat(40);
-  const requiredPath = REQUIRED_TAKOSUMI_MOBILE_PATHS[0];
+  const requiredPath = REQUIRED_MOBILE_KIT_PATHS[0];
   const status = buildMobilePreflightSourceRefStatus({
     pinnedRef,
-    takosumiHead: head,
+    mobileKitHead: head,
     dirtyMobileKitEntries: [`?? ${requiredPath}`],
     missingFromHead: [requiredPath],
     missingFromPinnedRef: [requiredPath],

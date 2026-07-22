@@ -6,39 +6,39 @@ import { fileURLToPath } from "node:url";
 
 const takosRoot = fileURLToPath(new URL("..", import.meta.url));
 
-export const REQUIRED_TAKOSUMI_MOBILE_PATHS = Object.freeze([
-  "mobile-kit/scripts/init-tauri-mobile-native.mjs",
-  "mobile-kit/scripts/mobile-release-evidence-validation.mjs",
-  "mobile-kit/scripts/mobile-release-versions.mjs",
-  "mobile-kit/src/push-navigation.ts",
+export const REQUIRED_MOBILE_KIT_PATHS = Object.freeze([
+  "scripts/init-tauri-mobile-native.mjs",
+  "scripts/mobile-release-evidence-validation.mjs",
+  "scripts/mobile-release-versions.mjs",
+  "src/push-navigation.ts",
 ]);
 
-export function extractPinnedTakosumiSourceRef(workflowSource) {
+export function extractPinnedMobileKitSourceRef(workflowSource) {
   return (
-    workflowSource.match(/TAKOSUMI_SOURCE_REF:[^\n]*'([0-9a-f]{40})'/u)?.[1] ??
+    workflowSource.match(/MOBILE_KIT_SOURCE_REF:[^\n]*'([0-9a-f]{40})'/u)?.[1] ??
     null
   );
 }
 
 export function buildMobilePreflightSourceRefStatus({
   pinnedRef,
-  takosumiHead,
+  mobileKitHead,
   dirtyMobileKitEntries = [],
   missingFromWorkingTree = [],
   missingFromHead = [],
   missingFromPinnedRef = [],
 }) {
   const reasons = [];
-  if (pinnedRef !== takosumiHead) {
+  if (pinnedRef !== mobileKitHead) {
     reasons.push({
       id: "pin_drift",
-      detail: `workflow pin ${pinnedRef} does not match checked-out Takosumi HEAD ${takosumiHead}`,
+      detail: `workflow pin ${pinnedRef} does not match checked-out mobile-kit HEAD ${mobileKitHead}`,
     });
   }
   if (dirtyMobileKitEntries.length > 0) {
     reasons.push({
       id: "mobile_kit_uncommitted",
-      detail: `${dirtyMobileKitEntries.length} mobile-kit path(s) differ from Takosumi HEAD`,
+      detail: `${dirtyMobileKitEntries.length} path(s) differ from mobile-kit HEAD`,
     });
   }
   if (missingFromWorkingTree.length > 0) {
@@ -50,7 +50,7 @@ export function buildMobilePreflightSourceRefStatus({
   if (missingFromHead.length > 0) {
     reasons.push({
       id: "head_missing_required_paths",
-      detail: `Takosumi HEAD does not contain ${missingFromHead.join(", ")}`,
+      detail: `mobile-kit HEAD does not contain ${missingFromHead.join(", ")}`,
     });
   }
   if (missingFromPinnedRef.length > 0) {
@@ -71,17 +71,17 @@ export function buildMobilePreflightSourceRefStatus({
       requiredProof: "successful-hosted-actions-checkout",
     },
     pinnedRef,
-    takosumiHead,
-    requiredPaths: [...REQUIRED_TAKOSUMI_MOBILE_PATHS],
+    mobileKitHead,
+    requiredPaths: [...REQUIRED_MOBILE_KIT_PATHS],
     blockers: localParityReady
       ? []
       : [
           {
             id: "native_preflight.source_ref_pending",
-            label: "Local mobile preflight Takosumi source parity is pending.",
+            label: "Local mobile preflight standalone mobile-kit parity is pending.",
             detail: reasons.map((reason) => reason.detail).join("; "),
             action:
-              "Commit and push the required Takosumi mobile-kit changes and update the workflow default to that immutable 40-character commit. This offline check does not verify public-origin reachability; require a successful hosted actions/checkout before treating the preflight as runnable.",
+              "Commit and push the required standalone mobile-kit changes and update the workflow default to that immutable 40-character commit. This offline check does not verify public-origin reachability; require a successful hosted actions/checkout before treating the preflight as runnable.",
             actionability: "repo",
             owner: "cross-repo-release-maintainer",
             reasons,
@@ -95,52 +95,50 @@ export function inspectMobilePreflightSourceRef({
     takosRoot,
     ".github/workflows/mobile-native-preflight.yml",
   ),
-  takosumiDir = resolve(takosRoot, "..", "takosumi"),
+  mobileKitDir = resolve(takosRoot, "..", "mobile-kit"),
 } = {}) {
   if (!existsSync(workflowPath)) {
     throw new Error(
       `mobile native preflight workflow is missing: ${workflowPath}`,
     );
   }
-  if (!existsSync(takosumiDir)) {
+  if (!existsSync(mobileKitDir)) {
     throw new Error(
-      `adjacent Takosumi checkout is missing: ${takosumiDir}. Set --takosumi-dir when using another checkout layout.`,
+      `adjacent mobile-kit checkout is missing: ${mobileKitDir}. Set --mobile-kit-dir when using another checkout layout.`,
     );
   }
 
-  const pinnedRef = extractPinnedTakosumiSourceRef(
+  const pinnedRef = extractPinnedMobileKitSourceRef(
     readFileSync(workflowPath, "utf8"),
   );
   if (!pinnedRef) {
     throw new Error(
-      `${workflowPath} must default TAKOSUMI_SOURCE_REF to an immutable 40-character commit.`,
+      `${workflowPath} must default MOBILE_KIT_SOURCE_REF to an immutable 40-character commit.`,
     );
   }
 
-  const takosumiHead = git(takosumiDir, ["rev-parse", "HEAD"]);
-  const dirtyMobileKitEntries = git(takosumiDir, [
+  const mobileKitHead = git(mobileKitDir, ["rev-parse", "HEAD"]);
+  const dirtyMobileKitEntries = git(mobileKitDir, [
     "status",
     "--short",
     "--untracked-files=all",
-    "--",
-    "mobile-kit",
   ])
     .split("\n")
     .map((entry) => entry.trim())
     .filter(Boolean);
-  const missingFromWorkingTree = REQUIRED_TAKOSUMI_MOBILE_PATHS.filter(
-    (relativePath) => !existsSync(resolve(takosumiDir, relativePath)),
+  const missingFromWorkingTree = REQUIRED_MOBILE_KIT_PATHS.filter(
+    (relativePath) => !existsSync(resolve(mobileKitDir, relativePath)),
   );
-  const missingFromHead = REQUIRED_TAKOSUMI_MOBILE_PATHS.filter(
-    (relativePath) => !gitObjectExists(takosumiDir, takosumiHead, relativePath),
+  const missingFromHead = REQUIRED_MOBILE_KIT_PATHS.filter(
+    (relativePath) => !gitObjectExists(mobileKitDir, mobileKitHead, relativePath),
   );
-  const missingFromPinnedRef = REQUIRED_TAKOSUMI_MOBILE_PATHS.filter(
-    (relativePath) => !gitObjectExists(takosumiDir, pinnedRef, relativePath),
+  const missingFromPinnedRef = REQUIRED_MOBILE_KIT_PATHS.filter(
+    (relativePath) => !gitObjectExists(mobileKitDir, pinnedRef, relativePath),
   );
 
   return buildMobilePreflightSourceRefStatus({
     pinnedRef,
-    takosumiHead,
+    mobileKitHead,
     dirtyMobileKitEntries,
     missingFromWorkingTree,
     missingFromHead,
@@ -178,10 +176,10 @@ function parseArgs(argv) {
       parsed.json = true;
       continue;
     }
-    if (arg === "--workflow" || arg === "--takosumi-dir") {
+    if (arg === "--workflow" || arg === "--mobile-kit-dir") {
       const value = argv[index + 1];
       if (!value) throw new Error(`${arg} requires a value.`);
-      parsed[arg === "--workflow" ? "workflowPath" : "takosumiDir"] = resolve(
+      parsed[arg === "--workflow" ? "workflowPath" : "mobileKitDir"] = resolve(
         process.cwd(),
         value,
       );
@@ -196,17 +194,17 @@ function parseArgs(argv) {
 function printHuman(report) {
   if (report.localParityReady) {
     console.log(
-      `OK ${report.status}: mobile native preflight source ref ${report.pinnedRef} matches the local committed Takosumi mobile-kit.`,
+      `OK ${report.status}: mobile native preflight source ref ${report.pinnedRef} matches the local committed standalone mobile-kit.`,
     );
     console.log(
-      "NOTE remote-reachability: not checked by this offline gate; require the hosted workflow's public Takosumi actions/checkout to succeed.",
+      "NOTE remote-reachability: not checked by this offline gate; require the hosted workflow's public mobile-kit actions/checkout to succeed.",
     );
     return;
   }
   const blocker = report.blockers[0];
   console.error(`BLOCK ${report.status}: ${blocker.label}`);
   console.error(`  workflow pin: ${report.pinnedRef}`);
-  console.error(`  Takosumi HEAD: ${report.takosumiHead}`);
+  console.error(`  mobile-kit HEAD: ${report.mobileKitHead}`);
   for (const reason of blocker.reasons) {
     console.error(`  - ${reason.id}: ${reason.detail}`);
   }

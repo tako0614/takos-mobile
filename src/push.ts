@@ -1,5 +1,4 @@
 import {
-  NOTIFICATION_PUSHER_REGISTRATION_PATH,
   normalizeNotificationPusherGatewayUrl,
   registerNotificationPusherWithHost,
   unregisterNotificationPusherWithHost,
@@ -8,8 +7,6 @@ import {
   type NotificationPusher,
 } from "@takosjp/mobile-kit";
 
-export const TAKOS_MOBILE_NOTIFICATION_PUSHER_PATH =
-  NOTIFICATION_PUSHER_REGISTRATION_PATH;
 export const TAKOS_MOBILE_NOTIFICATION_PUSHER_APP_ID = "jp.takos.mobile";
 export const TAKOS_MOBILE_PUSH_GATEWAY_URL_ENV =
   "VITE_TAKOS_NOTIFICATION_PUSHER_GATEWAY_URL";
@@ -56,18 +53,17 @@ function createTakosMobileNotificationPusher(
   registration: MobilePushRegistrationCallbackInput["registration"],
   configuredGatewayUrl: unknown,
 ): NotificationPusher {
+  const unset =
+    configuredGatewayUrl == null ||
+    (typeof configuredGatewayUrl === "string" &&
+      configuredGatewayUrl.trim() === "");
   const gatewayUrl =
     normalizeNotificationPusherGatewayUrl(configuredGatewayUrl);
-  if (!gatewayUrl) {
-    if (
-      configuredGatewayUrl == null ||
-      (typeof configuredGatewayUrl === "string" &&
-        configuredGatewayUrl.trim() === "")
-    ) {
-      throw new Error(
-        `Takos mobile remote push is disabled: ${TAKOS_MOBILE_PUSH_GATEWAY_URL_ENV} is not configured.`,
-      );
-    }
+  // An unset build-time URL is not a failure: the connected host owns the
+  // gateway allowlist and mobile-kit asks it first, throwing a named error when
+  // neither side advertises one. A URL that IS configured but unusable stays a
+  // loud build/config error rather than silently falling back to the host.
+  if (!gatewayUrl && !unset) {
     throw new Error(
       "Takos mobile notification gateway URL must use HTTPS without credentials; HTTP is allowed only for loopback development.",
     );
@@ -88,7 +84,7 @@ function createTakosMobileNotificationPusher(
     app_display_name: "Takos",
     pushkey: registration.token,
     data: {
-      url: gatewayUrl,
+      url: gatewayUrl ?? "",
       format: "event_id_only",
       provider,
       environment,

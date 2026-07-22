@@ -6,7 +6,9 @@ export const productAdapter: MobileProductAdapter = {
   hostNoun: "Takos host",
   urlPlaceholder: "https://workspace.example.com",
   primaryActionLabel: "Connect to Takos",
-  accentColor: "#166534",
+  // Takos brand red, kept equal to the `theme-color` the Takos web app
+  // declares in `takos/web/index.html`.
+  accentColor: "#E53935",
   mobileScheme: "takos",
   oidcScopes: [
     "openid",

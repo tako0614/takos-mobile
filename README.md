@@ -22,7 +22,7 @@ Current surface:
 - recent Takos host list for reconnecting without retyping URLs, with shared
   remove / clear controls
 - signed return/deep-link payload handling for connecting an existing host
-- host discovery through the Takosumi Mobile Kit foundation
+- host discovery through the standalone shared Mobile Kit foundation
 - OIDC PKCE sign-in, session restore, refresh, and sign-out through the
   foundation controller, using the host-advertised client id and explicit
   Takos API scopes
@@ -71,11 +71,11 @@ Current surface:
 - signed-in shortcuts that open the connected host's workspace, chat, apps, and
   notifications through the native browser handoff instead of rebuilding those
   full host screens in native UI
-- Takosumi Mobile Kit shell UI with Takos-specific metrics, shortcuts, and
+- shared Mobile Kit shell UI with Takos-specific metrics, shortcuts, and
   palette
-- Takosumi Mobile Kit app bootstrap; `src/main.tsx` is
+- shared Mobile Kit app bootstrap; `src/main.tsx` is
   mostly typed product config
-- typed Tauri default product bridge factory from Takosumi Mobile Kit
+- typed Tauri default product bridge factory from the shared Mobile Kit
   for deep links, opener, persistent store, Stronghold, local notifications,
   QR scanning, clipboard text writes, optional remote-push injection, and
   opener-backed call fallback
@@ -209,14 +209,14 @@ implementation as repository blockers.
 is the quickest way to see what remains before the strict release gate can pass.
 `release:repo-check` uses the same full evidence/status model but fails only
 `repo`-classified blockers. Before that status check, it verifies that the
-hosted native-preflight workflow pins the adjacent Takosumi checkout at its
+hosted native-preflight workflow pins the adjacent standalone mobile-kit checkout at its
 current committed HEAD, that the required mobile-kit files exist in the pinned
 commit, and that local mobile-kit changes are committed. A mismatch is reported
-as `source-ref-pending`; it remains a repository blocker until the Takosumi
+as `source-ref-pending`; it remains a repository blocker until the standalone mobile-kit
 change is committed and pushed and the workflow is updated to that immutable
 40-character commit. This offline check proves only `local-committed-parity`;
 it deliberately reports remote reachability as `not-checked`. Successful
-`actions/checkout` of the exact ref from the public Takosumi origin in the
+`actions/checkout` of the exact ref from the public mobile-kit origin in the
 hosted workflow is the separate live proof that the pin was actually pushed.
 It is suitable for Linux CI because missing Xcode,
 Android SDKs, generated projects, provider configuration, signing, store upload,

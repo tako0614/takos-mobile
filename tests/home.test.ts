@@ -2158,9 +2158,15 @@ test("registerTakosMobilePush posts a product-neutral notification pusher", asyn
     },
   );
 
-  expect(requests[0].url).toBe("https://takos.test/api/notifications/pushers");
-  expect(requests[0].headers.get("authorization")).toBe("Bearer mobile-token");
-  expect(await requests[0].json()).toEqual({
+  // mobile-kit asks the connected host for its gateway first (one binary talks
+  // to many self-hosted servers); this stub advertises none, so the build-time
+  // URL stays in effect and the registration POST follows.
+  expect(requests[0].url).toBe(
+    "https://takos.test/api/notifications/pushers/config",
+  );
+  expect(requests[1].url).toBe("https://takos.test/api/notifications/pushers");
+  expect(requests[1].headers.get("authorization")).toBe("Bearer mobile-token");
+  expect(await requests[1].json()).toEqual({
     product: "takos",
     pusher: {
       kind: "http",
@@ -2190,14 +2196,13 @@ test("registerTakosMobilePush fails clearly when the gateway is feature-off", as
       },
       {
         gatewayUrl: null,
-        fetch: async () => {
-          throw new Error("must not send request");
-        },
+        // The host is probed for a gateway, but advertises none. With no
+        // build-time fallback either, registration must fail loudly rather
+        // than post a pusher with an empty notify URL.
+        fetch: async () => json({}),
       },
     ),
-  ).rejects.toThrow(
-    "VITE_TAKOS_NOTIFICATION_PUSHER_GATEWAY_URL is not configured",
-  );
+  ).rejects.toThrow("This host does not advertise a notification push gateway.");
 });
 
 test("registerTakosMobilePush rejects unsafe gateway configuration", async () => {
