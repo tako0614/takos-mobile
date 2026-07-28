@@ -7,6 +7,12 @@ pub enum Error {
     #[cfg(mobile)]
     #[error(transparent)]
     PluginInvoke(#[from] tauri::plugin::mobile::PluginInvokeError),
+    #[cfg(not(mobile))]
+    #[error(transparent)]
+    OsCredentialStore(#[from] keyring::Error),
+    #[cfg(not(mobile))]
+    #[error("keystore service and user must be non-empty")]
+    InvalidIdentity,
 }
 
 impl Serialize for Error {

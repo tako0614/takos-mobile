@@ -1,39 +1,45 @@
 import {
   createMobileApiClient,
-  mobileRecord,
   mobileOptionalText,
+  mobileRecord,
   type FetchLike,
   type MobileSession,
 } from "@takosjp/mobile-kit";
 
-/** Canonical public Git pointer used by Takosumi Source/Capsule planning. */
+/** Canonical public Git pointer accepted by the Takos app-installation facade. */
 export interface TakosMobileGitAddress {
   readonly url: string;
   readonly ref: string;
   readonly path: string;
 }
 
-const DEFAULT_INSTALL_CONFIG_ID = "cfg-default-opentofu-capsule";
-const DEFAULT_INSTALL_CONFIG_NAME = "opentofu-capsule";
-
 export interface TakosMobileCapsulePreview {
   readonly id: string;
   readonly spaceId: string;
-  readonly sourceId: string;
   readonly name: string;
   readonly status?: string;
   readonly source?: TakosMobileGitAddress;
   readonly routePath: string;
 }
 
+type TakosMobileCapsulePlanOperation = "install" | "upgrade";
+
+/**
+ * Exact plan evidence returned by the Takos facade.
+ *
+ * The mobile client treats `expected` as an opaque, same-host capability. It
+ * never reconstructs a Takosumi Source/Capsule/Run request or selects an
+ * InstallConfig itself.
+ */
 export interface TakosMobileGitCapsulePlan {
+  readonly operation: TakosMobileCapsulePlanOperation;
   readonly spaceId: string;
-  readonly sourceId: string;
   readonly capsuleId: string;
   readonly runId: string;
   readonly runStatus: string;
   readonly source: TakosMobileGitAddress;
   readonly title: string;
+  readonly expected: Readonly<Record<string, unknown>>;
   readonly raw: unknown;
 }
 
@@ -58,12 +64,11 @@ export interface PlanTakosMobileGitCapsuleInput extends MobileControlInput {
 export interface PlanTakosMobileCapsuleUpdateInput extends MobileControlInput {
   readonly spaceId: string;
   readonly capsuleId: string;
-  readonly sourceId: string;
   readonly source: TakosMobileGitAddress;
 }
 
-function prefix(spaceId: string): string {
-  return `/api/spaces/${encodeURIComponent(spaceId)}`;
+function capsulePrefix(spaceId: string): string {
+  return `/api/spaces/${encodeURIComponent(spaceId)}/capsules`;
 }
 
 function requireTrimmed(value: string, message: string): string {
@@ -92,29 +97,6 @@ function assertSafeModulePath(modulePath: string): void {
     modulePath.split("/").some((part) => part === "..")
   ) {
     throw new Error("Module path must be repository-relative.");
-  }
-}
-
-function normalizedGitIdentity(value: unknown): string | null {
-  const input = mobileOptionalText(value);
-  if (!input) return null;
-  try {
-    const url = new URL(input);
-    if (
-      url.protocol !== "https:" ||
-      !url.hostname ||
-      url.username ||
-      url.password ||
-      url.hash ||
-      url.search
-    ) {
-      return null;
-    }
-    url.hostname = url.hostname.toLowerCase();
-    url.pathname = url.pathname.replace(/\.git\/?$/iu, "").replace(/\/+$/u, "");
-    return url.toString();
-  } catch {
-    return null;
   }
 }
 
@@ -147,119 +129,24 @@ function normalizeGitAddress(
   return { url, ref, path };
 }
 
-function runFrom(value: unknown): Record<string, unknown> {
-  const run = mobileRecord(mobileRecord(value)?.run);
-  if (!run || !mobileOptionalText(run.id)) {
-    throw new Error("Takosumi response is missing a Run.");
-  }
-  return run;
+function capsuleId(value: Record<string, unknown>): string | undefined {
+  return mobileOptionalText(value.capsule_id);
 }
 
-async function waitForRun(
-  client: ReturnType<typeof createMobileApiClient>,
-  spaceId: string,
-  initial: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  let run = initial;
-  let delayMs = 500;
-  const startedAt = Date.now();
-  for (;;) {
-    const status = mobileOptionalText(run.status) ?? "queued";
-    if (status === "succeeded" || status === "waiting_approval") return run;
-    if (["failed", "cancelled", "expired"].includes(status)) {
-      throw new Error(`Run ${mobileOptionalText(run.id) ?? ""} ${status}.`);
-    }
-    if (Date.now() - startedAt > 180_000) {
-      throw new Error(`Run is still ${status}.`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    delayMs = Math.min(Math.round(delayMs * 1.4), 3_000);
-    const runId = mobileOptionalText(run.id)!;
-    run = runFrom(
-      await client.json(`${prefix(spaceId)}/runs/${encodeURIComponent(runId)}`),
-    );
+function sourceFromCapsule(
+  value: Record<string, unknown>,
+): TakosMobileGitAddress | undefined {
+  const source = mobileRecord(value.source);
+  if (mobileOptionalText(source.type) !== "git") return undefined;
+  const url = mobileOptionalText(source.url);
+  const ref = mobileOptionalText(source.ref);
+  const path = mobileOptionalText(source.path) ?? ".";
+  if (!url || !ref) return undefined;
+  try {
+    return normalizeGitAddress({ url, ref, path });
+  } catch {
+    return undefined;
   }
-}
-
-/**
- * Select execution policy only from a Takosumi DB-owned InstallConfig.
- * First-party configs are associated by the Store discovery identity
- * (canonical Git URL + module path). Store ref hints never select execution
- * policy; the explicit Source/Run owns the requested ref. Display names never
- * associate a config with a source. Name matching is reserved for the stable
- * generic OpenTofu fallback.
- */
-export function selectTakosMobileInstallConfigId(
-  configs: readonly unknown[],
-  requested: TakosMobileGitAddress,
-): string | undefined {
-  const sourceAddress = normalizeGitAddress(requested);
-  const requestedGit = normalizedGitIdentity(sourceAddress.url);
-  const exactIds: string[] = [];
-  const parsed = configs
-    .map((value) => mobileRecord(value))
-    .filter((value): value is Record<string, unknown> => value !== null);
-
-  for (const config of parsed) {
-    const id = mobileOptionalText(config.id);
-    const source = mobileRecord(mobileRecord(config.store)?.source);
-    const git = mobileOptionalText(source?.url);
-    const path = mobileOptionalText(source?.path);
-    if (!id || !git || !path) continue;
-    let configuredPath: string;
-    try {
-      configuredPath = normalizedModulePath(path);
-    } catch {
-      continue;
-    }
-    if (
-      normalizedGitIdentity(git) === requestedGit &&
-      configuredPath === sourceAddress.path
-    ) {
-      exactIds.push(id);
-    }
-  }
-  if (exactIds.length > 1) {
-    throw new Error(
-      "Takosumi returned multiple InstallConfigs for the same canonical Git URL and module path.",
-    );
-  }
-  if (exactIds.length === 1) return exactIds[0];
-
-  const stableFallback = parsed.find(
-    (config) =>
-      mobileOptionalText(config.id) === DEFAULT_INSTALL_CONFIG_ID &&
-      !mobileRecord(config.store),
-  );
-  const stableFallbackId = mobileOptionalText(stableFallback?.id);
-  if (stableFallbackId) return stableFallbackId;
-
-  const namedFallback = parsed.find(
-    (config) =>
-      mobileOptionalText(config.name) === DEFAULT_INSTALL_CONFIG_NAME &&
-      Boolean(mobileOptionalText(config.id)) &&
-      !mobileRecord(config.store),
-  );
-  return mobileOptionalText(namedFallback?.id);
-}
-
-async function installConfigIdForGitAddress(
-  client: ReturnType<typeof createMobileApiClient>,
-  spaceId: string,
-  source: TakosMobileGitAddress,
-): Promise<string> {
-  const response = mobileRecord(
-    await client.json(`${prefix(spaceId)}/capsule-configs`),
-  );
-  const configs = response?.installConfigs;
-  if (!Array.isArray(configs)) {
-    throw new Error("Takosumi InstallConfig list is unavailable.");
-  }
-  const id = selectTakosMobileInstallConfigId(configs, source);
-  if (id) return id;
-  throw new Error(
-    "Takosumi has no InstallConfig matching this Git source and no generic fallback.",
-  );
 }
 
 export async function loadTakosMobileCapsules(
@@ -270,123 +157,99 @@ export async function loadTakosMobileCapsules(
     session: input.session,
     fetch: input.fetch,
   });
-  const [capsuleEnvelope, sourceEnvelope] = await Promise.all([
-    client.json(`${prefix(spaceId)}/capsules`),
-    client.json(`${prefix(spaceId)}/sources`),
-  ]);
-  const sources = mobileRecord(sourceEnvelope)?.sources;
-  const sourcesById = new Map<string, Record<string, unknown>>();
-  if (Array.isArray(sources)) {
-    for (const value of sources) {
-      const source = mobileRecord(value);
-      const id = mobileOptionalText(source?.id);
-      if (source && id) sourcesById.set(id, source);
-    }
+  const envelope = mobileRecord(
+    await client.json(capsulePrefix(spaceId)),
+  );
+  if (!Array.isArray(envelope?.capsules)) {
+    throw new Error("Takos response is missing Capsules.");
   }
-  const capsules = mobileRecord(capsuleEnvelope)?.capsules;
-  if (!Array.isArray(capsules)) return [];
+
   const out: TakosMobileCapsulePreview[] = [];
-  for (const value of capsules) {
+  for (const value of envelope.capsules) {
     const capsule = mobileRecord(value);
-    const id = mobileOptionalText(capsule?.id);
-    const sourceId = mobileOptionalText(capsule?.sourceId);
-    const name = mobileOptionalText(capsule?.name);
-    if (!id || !sourceId || !name) continue;
-    const source = sourcesById.get(sourceId);
-    const url = mobileOptionalText(source?.url);
-    const ref = mobileOptionalText(source?.defaultRef);
-    const path = mobileOptionalText(source?.defaultPath);
+    if (!capsule) continue;
+    const id = capsuleId(capsule);
+    const name =
+      mobileOptionalText(capsule.name) ??
+      mobileOptionalText(capsule.app_id);
+    if (!id || !name) continue;
+    const source = sourceFromCapsule(capsule);
     out.push({
       id,
       spaceId,
-      sourceId,
       name,
-      status: mobileOptionalText(capsule?.status),
-      ...(url && ref && path ? { source: { url, ref, path } } : {}),
+      status: mobileOptionalText(capsule.status),
+      ...(source ? { source } : {}),
       routePath: "/apps",
     });
   }
   return out;
 }
 
+function exactPlanEvidence(value: unknown): {
+  readonly expected: Readonly<Record<string, unknown>>;
+  readonly capsuleId: string;
+  readonly runId: string;
+  readonly runStatus: string;
+} {
+  const envelope = mobileRecord(value);
+  const expected = mobileRecord(envelope?.expected);
+  if (!expected) {
+    throw new Error("Takos response is missing exact plan evidence.");
+  }
+  const capsule = mobileRecord(envelope?.capsule);
+  const run = mobileRecord(envelope?.run);
+  const capsuleId =
+    mobileOptionalText(expected.capsuleId) ??
+    mobileOptionalText(expected.capsule_id) ??
+    mobileOptionalText(capsule?.id);
+  const runId =
+    mobileOptionalText(expected.runId) ??
+    mobileOptionalText(expected.run_id) ??
+    mobileOptionalText(run?.id);
+  if (!capsuleId || !runId) {
+    throw new Error("Takos response contains incomplete plan evidence.");
+  }
+  return {
+    expected,
+    capsuleId,
+    runId,
+    runStatus: mobileOptionalText(run?.status) ?? "planned",
+  };
+}
+
 export async function planTakosMobileGitCapsule(
   input: PlanTakosMobileGitCapsuleInput,
 ): Promise<TakosMobileGitCapsulePlan> {
   const spaceId = requireTrimmed(input.spaceId, "Workspace is required.");
-  const sourceAddress = normalizeGitAddress(input.source);
+  const source = normalizeGitAddress(input.source);
   const client = createMobileApiClient({
     session: input.session,
     fetch: input.fetch,
   });
-  const name = sourceName(sourceAddress.url);
-  const installConfigId = await installConfigIdForGitAddress(
-    client,
-    spaceId,
-    sourceAddress,
-  );
-  const sourceEnvelope = mobileRecord(
-    await client.json(`${prefix(spaceId)}/sources`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name,
-        url: sourceAddress.url,
-        defaultRef: sourceAddress.ref,
-        defaultPath: sourceAddress.path,
-        autoSync: false,
-      }),
+  const raw = await client.json(`${capsulePrefix(spaceId)}/git-url/plan`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      git_url: source.url,
+      ref: source.ref,
+      module_path: source.path,
+      ...(input.variables ? { variables: input.variables } : {}),
     }),
-  );
-  const source = mobileRecord(sourceEnvelope?.source);
-  const sourceId = mobileOptionalText(source?.id);
-  if (!sourceId) throw new Error("Takosumi response is missing a Source.");
-  const syncEnvelope = await client.json(
-    `${prefix(spaceId)}/sources/${encodeURIComponent(sourceId)}/sync`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ intent: "manual_plan" }),
-    },
-  );
-  await waitForRun(client, spaceId, runFrom(syncEnvelope));
-  const capsuleEnvelope = mobileRecord(
-    await client.json(`${prefix(spaceId)}/capsules`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        name,
-        environment: "production",
-        sourceId,
-        installConfigId,
-        ...(sourceAddress.path !== "."
-          ? { modulePath: sourceAddress.path }
-          : {}),
-        ...(input.variables ? { vars: input.variables } : {}),
-      }),
-    }),
-  );
-  const capsule = mobileRecord(capsuleEnvelope?.capsule);
-  const capsuleId = mobileOptionalText(capsule?.id);
-  if (!capsuleId) throw new Error("Takosumi response is missing a Capsule.");
-  const planEnvelope = await client.json(
-    `${prefix(spaceId)}/capsules/${encodeURIComponent(capsuleId)}/plan`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    },
-  );
-  const run = await waitForRun(client, spaceId, runFrom(planEnvelope));
-  const runId = mobileOptionalText(run.id)!;
+  });
+  const exact = exactPlanEvidence(raw);
+  const envelope = mobileRecord(raw);
+  const capsule = mobileRecord(envelope?.capsule);
   return {
+    operation: "install",
     spaceId,
-    sourceId,
-    capsuleId,
-    runId,
-    runStatus: mobileOptionalText(run.status) ?? "succeeded",
-    source: sourceAddress,
-    title: name,
-    raw: planEnvelope,
+    capsuleId: exact.capsuleId,
+    runId: exact.runId,
+    runStatus: exact.runStatus,
+    source,
+    title: mobileOptionalText(capsule?.name) ?? sourceName(source.url),
+    expected: exact.expected,
+    raw,
   };
 }
 
@@ -397,22 +260,22 @@ export async function applyTakosMobileCapsulePlan(
     session: input.session,
     fetch: input.fetch,
   });
-  if (input.plan.runStatus === "waiting_approval") {
-    await client.json(
-      `${prefix(input.plan.spaceId)}/runs/${encodeURIComponent(input.plan.runId)}/approve`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ reason: "Approved in Takos mobile" }),
-      },
-    );
-  }
+  const base = `${capsulePrefix(input.plan.spaceId)}/git-url`;
+  const revision = input.plan.operation === "upgrade";
   const response = await client.json(
-    `${prefix(input.plan.spaceId)}/runs/${encodeURIComponent(input.plan.runId)}/apply`,
+    `${base}${revision ? "/revision" : ""}/apply`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "{}",
+      body: JSON.stringify({
+        ...(revision
+          ? {
+              capsule_id: input.plan.capsuleId,
+              operation: "upgrade",
+            }
+          : {}),
+        expected: input.plan.expected,
+      }),
     },
   );
   return summarizeMutation(response, input.plan.capsuleId);
@@ -434,51 +297,39 @@ export async function planTakosMobileCapsuleUpdate(
 ): Promise<TakosMobileGitCapsulePlan> {
   const spaceId = requireTrimmed(input.spaceId, "Workspace is required.");
   const capsuleId = requireTrimmed(input.capsuleId, "Capsule id is required.");
-  const sourceId = requireTrimmed(input.sourceId, "Source id is required.");
-  const sourceAddress = normalizeGitAddress(input.source);
+  const source = normalizeGitAddress(input.source);
   const client = createMobileApiClient({
     session: input.session,
     fetch: input.fetch,
   });
-  await client.json(
-    `${prefix(spaceId)}/sources/${encodeURIComponent(sourceId)}`,
+  const raw = await client.json(
+    `${capsulePrefix(spaceId)}/git-url/revision/plan`,
     {
-      method: "PATCH",
+      method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        url: sourceAddress.url,
-        defaultRef: sourceAddress.ref,
-        defaultPath: sourceAddress.path,
+        capsule_id: capsuleId,
+        operation: "upgrade",
+        git_url: source.url,
+        ref: source.ref,
+        module_path: source.path,
       }),
     },
   );
-  const syncEnvelope = await client.json(
-    `${prefix(spaceId)}/sources/${encodeURIComponent(sourceId)}/sync`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ intent: "manual_plan" }),
-    },
-  );
-  await waitForRun(client, spaceId, runFrom(syncEnvelope));
-  const planEnvelope = await client.json(
-    `${prefix(spaceId)}/capsules/${encodeURIComponent(capsuleId)}/plan`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{}",
-    },
-  );
-  const run = await waitForRun(client, spaceId, runFrom(planEnvelope));
+  const exact = exactPlanEvidence(raw);
+  if (exact.capsuleId !== capsuleId) {
+    throw new Error("Takos plan evidence belongs to another Capsule.");
+  }
   return {
+    operation: "upgrade",
     spaceId,
-    sourceId,
     capsuleId,
-    runId: mobileOptionalText(run.id)!,
-    runStatus: mobileOptionalText(run.status) ?? "succeeded",
-    source: sourceAddress,
-    title: sourceName(sourceAddress.url),
-    raw: planEnvelope,
+    runId: exact.runId,
+    runStatus: exact.runStatus,
+    source,
+    title: sourceName(source.url),
+    expected: exact.expected,
+    raw,
   };
 }
 
@@ -495,7 +346,7 @@ export async function removeTakosMobileCapsule(
     fetch: input.fetch,
   });
   const response = await client.json(
-    `${prefix(spaceId)}/capsules/${encodeURIComponent(capsuleId)}`,
+    `${capsulePrefix(spaceId)}/${encodeURIComponent(capsuleId)}`,
     { method: "DELETE" },
   );
   return summarizeMutation(response, capsuleId);
@@ -509,10 +360,19 @@ function summarizeMutation(
   const capsule = mobileRecord(record.capsule);
   const run = mobileRecord(record.run);
   return {
-    capsuleId: mobileOptionalText(capsule?.id) ?? fallbackCapsuleId,
-    runId: mobileOptionalText(run?.id),
+    capsuleId:
+      mobileOptionalText(record.capsuleId) ??
+      mobileOptionalText(record.capsule_id) ??
+      mobileOptionalText(capsule?.id) ??
+      fallbackCapsuleId,
+    runId:
+      mobileOptionalText(record.runId) ??
+      mobileOptionalText(record.run_id) ??
+      mobileOptionalText(run?.id),
     status:
-      mobileOptionalText(run?.status) ?? mobileOptionalText(capsule?.status),
+      mobileOptionalText(record.status) ??
+      mobileOptionalText(run?.status) ??
+      mobileOptionalText(capsule?.status),
     raw: response,
   };
 }

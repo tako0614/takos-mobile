@@ -10,6 +10,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_keystore::init())
         .setup(|app| {
             let app_data_dir = app.path().app_local_data_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
@@ -21,8 +22,6 @@ pub fn run() {
             app.handle().plugin(tauri_plugin_barcode_scanner::init())?;
             #[cfg(mobile)]
             app.handle().plugin(tauri_plugin_biometric::init())?;
-            #[cfg(mobile)]
-            app.handle().plugin(tauri_plugin_keystore::init())?;
             #[cfg(mobile)]
             app.handle().plugin(tauri_plugin_mobile_push::init())?;
             Ok(())

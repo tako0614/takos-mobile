@@ -24,11 +24,11 @@ tauri-plugin-opener = "2"
 tauri-plugin-os = "2.3.2"
 tauri-plugin-store = "2"
 tauri-plugin-stronghold = "2.3.1"
+tauri-plugin-keystore = { path = "plugins/keystore" }
 
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-barcode-scanner = "2"
 tauri-plugin-biometric = "2.3.2"
-tauri-plugin-keystore = { path = "plugins/keystore" }
 tauri-plugin-mobile-push = { path = "plugins/mobile-push" }
 
 [patch.crates-io]
@@ -36,4 +36,6 @@ tauri-plugin-mobile-push = { path = "plugins/mobile-push" }
 # security fix keeps the 0.7.2 API while removing vulnerable quick-xml.
 tauri-winrt-notification = { git = "https://github.com/tauri-apps/winrt-notification", rev = "09a4135a871c6ead29832dca5698948fb30bf94b" }
 # wayland-scanner 0.31.10 has not cut a release after its quick-xml 0.41 fix.
-wayland-scanner = { git = "https://github.com/Smithay/wayland-rs", rev = "d07c4f91f28b42e5a485823ffd9d8d5a210b1053" }
+# Pin the current compatible upstream commit; the former patch predates the
+# protocol API used by wayland-client 0.31.14 and no longer compiles.
+wayland-scanner = { git = "https://github.com/Smithay/wayland-rs", rev = "05196740da57e41b60a9e9f8e35079e9bd29b89a" }

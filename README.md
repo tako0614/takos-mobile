@@ -58,16 +58,20 @@ Current surface:
   controls
 - signed-in quick memory capture backed by `POST /api/spaces/:spaceId/memories`,
   with type/category controls and host memory handoff after save
-- signed-in installed-app list backed by Takosumi Capsule records, joined by
+- signed-in installed-app list backed by the Takos host's Capsule facade,
+  joined by
   exact Capsule owner id to authorized, resolved `interface.ui.surface@1`
   launcher records from `/api/apps`; `InterfaceBinding(ui.open)` is required,
   and Capsules without one remain installed but not launchable
-- signed-in Git URL Capsule setup backed by the public Source → source sync Run
-  → Capsule → plan Run → approval/apply flow, with an explicit mobile plan
-  review before apply and one canonical `{ url, ref, path }` Git pointer
+- signed-in Git URL Capsule setup backed only by the Takos
+  `/api/spaces/:spaceId/capsules/git-url/{plan,apply}` facade, with an explicit
+  mobile plan review before apply and one canonical `{ url, ref, path }` Git
+  pointer. Takos owns the delegated Accounts exchange and the Takosumi
+  Source/Capsule/Run orchestration; the mobile shell does not select an
+  InstallConfig or call Takosumi directly
 - signed-in Capsule lifecycle preview backed by
-  `/api/spaces/:spaceId/capsules` and `/sources`, with Source ref updates,
-  reviewed Run apply, and destroy-Run creation
+  `/api/spaces/:spaceId/capsules`, with reviewed revision apply and destroy
+  requests through the same Takos facade
 - signed-in shortcuts that open the connected host's workspace, chat, apps, and
   notifications through the native browser handoff instead of rebuilding those
   full host screens in native UI
@@ -80,9 +84,12 @@ Current surface:
   QR scanning, clipboard text writes, optional remote-push injection, and
   opener-backed call fallback
 - Stronghold-backed secure token/session storage with a product-owned Android
-  Keystore / iOS Keychain seed. Legacy product-scoped Tauri Store seeds are
-  migration-only, are never used after native write failure, and are deleted
-  after a later native read-back verifies the same value
+  Keystore / iOS Keychain seed and OS credential-store backing on desktop
+  (macOS Keychain, Windows Credential Manager, or Linux Secret Service).
+  Legacy product-scoped Tauri Store seeds are migration-only, are never used
+  after native write failure, and are deleted after a later native read-back
+  verifies the same value. A missing or locked OS credential store fails
+  closed
 - Tauri v2 deep-link, opener, clipboard-manager, path, store, Stronghold,
   local notification, and QR scanner plugin wiring
 - Tauri v2 biometric plugin wiring exposed through a typed optional native
@@ -148,15 +155,15 @@ bun run mobile:release-evidence-check
 bun run mobile:release-check
 bun run mobile:release-status
 bun run mobile:repo-release-check
-cd mobile && bun run test
-cd mobile && bun run tauri:android:init
-cd mobile && bun run tauri:android:dev
-cd mobile && bun run tauri:ios:init
-cd mobile && bun run tauri:ios:dev
-cd mobile && bun run tauri:native-push:apply
-cd mobile && bun run tauri:native-push:verify
-cd mobile && bun run tauri:native-push:apply:release
-cd mobile && bun run tauri:native-push:verify:release
+bun run test
+bun run tauri:android:init
+bun run tauri:android:dev
+bun run tauri:ios:init
+bun run tauri:ios:dev
+bun run tauri:native-push:apply
+bun run tauri:native-push:verify
+bun run tauri:native-push:apply:release
+bun run tauri:native-push:verify:release
 ```
 
 Remaining release work:

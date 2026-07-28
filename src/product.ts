@@ -13,7 +13,10 @@ export const productAdapter: MobileProductAdapter = {
   oidcScopes: [
     "openid",
     "profile",
+    "email",
     "offline_access",
+    "capsules:read",
+    "capsules:write",
     "spaces:read",
     "spaces:write",
     "threads:read",

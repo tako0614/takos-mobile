@@ -1,6 +1,5 @@
 import {
   createMobileApiClient,
-  MobileApiError,
   mobileNumber,
   mobileRecord,
   mobileOptionalText,
@@ -97,14 +96,10 @@ export async function loadTakosMobileHome(
 ): Promise<TakosMobileHome> {
   const client = createMobileApiClient({ session });
   const [me, spaces, unread, notifications] = await Promise.all([
-    optionalJson<TakosMe>(() => client.json("/api/auth/me")),
-    optionalJson<TakosSpaces>(() => client.json("/api/spaces")),
-    optionalJson<TakosUnread>(() =>
-      client.json("/api/notifications/unread-count"),
-    ),
-    optionalJson<TakosNotifications>(() =>
-      client.json("/api/notifications?limit=3"),
-    ),
+    client.json<TakosMe>("/api/auth/me"),
+    client.json<TakosSpaces>("/api/spaces"),
+    client.json<TakosUnread>("/api/notifications/unread-count"),
+    client.json<TakosNotifications>("/api/notifications?limit=3"),
   ]);
   const chatTarget = summarizeChatTarget(spaces?.spaces);
   let threads: TakosThreads | undefined;
@@ -115,32 +110,22 @@ export async function loadTakosMobileHome(
   if (chatTarget) {
     [threads, agentTasks, memories, capsules, launcherSurfaces] =
       await Promise.all([
-        optionalJson<TakosThreads>(() =>
-          client.json(
-            `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/threads?status=active`,
-          ),
+        client.json<TakosThreads>(
+          `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/threads?status=active`,
         ),
-        optionalJson<TakosAgentTasks>(() =>
-          client.json(
-            `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/agent-tasks?limit=4`,
-          ),
+        client.json<TakosAgentTasks>(
+          `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/agent-tasks?limit=4`,
         ),
-        optionalJson<TakosMemories>(() =>
-          client.json(
-            `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/memories?limit=4`,
-          ),
+        client.json<TakosMemories>(
+          `/api/spaces/${encodePathSegment(chatTarget.spaceId)}/memories?limit=4`,
         ),
-        optionalJson(() =>
-          loadTakosMobileCapsules({
-            session,
-            spaceId: chatTarget.spaceId,
-          }),
-        ),
-        optionalJson<TakosApps>(() =>
-          client.json("/api/apps", {
-            headers: { "x-takos-space-id": chatTarget.spaceId },
-          }),
-        ),
+        loadTakosMobileCapsules({
+          session,
+          spaceId: chatTarget.spaceId,
+        }),
+        client.json<TakosApps>("/api/apps", {
+          headers: { "x-takos-space-id": chatTarget.spaceId },
+        }),
       ]);
   }
   const threadList =
@@ -204,20 +189,6 @@ export async function loadTakosMobileHome(
           )
       : undefined,
   };
-}
-
-async function optionalJson<T>(load: () => Promise<T>): Promise<T | undefined> {
-  try {
-    return await load();
-  } catch (error) {
-    if (
-      error instanceof MobileApiError &&
-      (error.status === 401 || error.status === 403)
-    ) {
-      throw error;
-    }
-    return undefined;
-  }
 }
 
 interface TakosMe {
@@ -435,15 +406,13 @@ async function hydrateThreadPreviews(
 ): Promise<readonly TakosMobileThreadPreview[]> {
   return await Promise.all(
     threads.map(async (thread) => {
-      const page = await optionalJson(() =>
-        loadTakosMobileThreadMessages({
-          session,
-          threadId: thread.id,
-          limit: 5,
-          latest: true,
-        }),
-      );
-      const recentMessages = page?.messages ?? [];
+      const page = await loadTakosMobileThreadMessages({
+        session,
+        threadId: thread.id,
+        limit: 5,
+        latest: true,
+      });
+      const recentMessages = page.messages;
       const lastMessage = recentMessages[recentMessages.length - 1];
       return recentMessages.length > 0
         ? { ...thread, recentMessages, lastMessage }

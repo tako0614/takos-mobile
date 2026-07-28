@@ -25,6 +25,7 @@
         }
       ]
     },
+    "keystore:default",
     "notification:default",
     "opener:allow-default-urls",
     "opener:allow-open-url",

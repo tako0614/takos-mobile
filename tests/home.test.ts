@@ -11,7 +11,6 @@ import {
   loadTakosMobileCapsules,
   planTakosMobileCapsuleUpdate,
   removeTakosMobileCapsule,
-  selectTakosMobileInstallConfigId,
 } from "../src/apps.ts";
 import {
   cancelTakosMobileRun,
@@ -50,39 +49,36 @@ const session: MobileSession = {
   createdAt: "2026-06-30T00:00:00.000Z",
 };
 
-test("Capsule previews join public Capsule and Source records", async () => {
+test("Capsule previews use the Takos Capsule facade", async () => {
+  const requests: Request[] = [];
   const capsules = await loadTakosMobileCapsules({
     session,
     spaceId: "me",
-    fetch: async (input) =>
-      String(input).endsWith("/capsules")
-        ? json({
-            capsules: [
-              {
-                id: "capsule-1",
-                sourceId: "source-1",
-                name: "office",
-                status: "ready",
-              },
-            ],
-          })
-        : json({
-            sources: [
-              {
-                id: "source-1",
-                url: "https://github.com/tako0614/takos-office.git",
-                defaultRef: "main",
-                defaultPath: "deploy/opentofu",
-              },
-            ],
-          }),
+    fetch: async (input, init) => {
+      requests.push(new Request(input, init));
+      return json({
+        capsules: [
+          {
+            capsule_id: "capsule-1",
+            app_id: "jp.takos.office",
+            name: "office",
+            status: "ready",
+            source: {
+              type: "git",
+              url: "https://github.com/tako0614/takos-office.git",
+              ref: "main",
+              path: "deploy/opentofu",
+            },
+          },
+        ],
+      });
+    },
   });
 
   expect(capsules).toEqual([
     {
       id: "capsule-1",
       spaceId: "me",
-      sourceId: "source-1",
       name: "office",
       status: "ready",
       source: {
@@ -93,170 +89,12 @@ test("Capsule previews join public Capsule and Source records", async () => {
       routePath: "/apps",
     },
   ]);
-});
-
-test("InstallConfig selection matches canonical URL/path without requiring a Store ref", () => {
-  expect(
-    selectTakosMobileInstallConfigId(
-      [
-        {
-          id: "cfg-default-opentofu-capsule",
-          name: "opentofu-capsule",
-        },
-        {
-          id: "cfg-app-exact",
-          name: "first-party-app",
-          store: {
-            source: {
-              url: "https://github.com/example/app",
-              path: "deploy/opentofu",
-            },
-          },
-          interfaceBlueprints: [{ key: "launcher" }],
-        },
-      ],
-      {
-        url: "https://github.com/example/app.git",
-        ref: "main",
-        path: "./deploy/opentofu/",
-      },
-    ),
-  ).toBe("cfg-app-exact");
-});
-
-test("InstallConfig selection ignores Store ref hints but rejects URL/path mismatches", () => {
-  expect(
-    selectTakosMobileInstallConfigId(
-      [
-        { id: "cfg-generic-name", name: "opentofu-capsule" },
-        {
-          id: "cfg-wrong-url",
-          name: "app",
-          store: {
-            source: {
-              url: "https://github.com/example/other.git",
-              ref: "main",
-              path: ".",
-            },
-          },
-        },
-        {
-          id: "cfg-ref-is-display-only",
-          name: "app",
-          store: {
-            source: {
-              url: "https://github.com/example/app.git",
-              ref: "stable",
-              path: ".",
-            },
-          },
-        },
-        {
-          id: "cfg-wrong-path",
-          name: "app",
-          store: {
-            source: {
-              url: "https://github.com/example/app.git",
-              ref: "main",
-              path: "deploy/opentofu",
-            },
-          },
-        },
-        { id: "cfg-default-opentofu-capsule", name: "renamed-default" },
-      ],
-      {
-        url: "https://github.com/example/app.git",
-        ref: "main",
-        path: ".",
-      },
-    ),
-  ).toBe("cfg-ref-is-display-only");
-});
-
-test("InstallConfig selection fails closed on duplicate canonical URL/path identities", () => {
-  expect(() =>
-    selectTakosMobileInstallConfigId(
-      [
-        {
-          id: "cfg-app-a",
-          store: {
-            source: {
-              url: "https://github.com/example/app.git",
-              ref: "main",
-              path: ".",
-            },
-          },
-        },
-        {
-          id: "cfg-app-b",
-          store: {
-            source: {
-              url: "https://github.com/example/app",
-              ref: "stable",
-              path: "./",
-            },
-          },
-        },
-      ],
-      {
-        url: "https://github.com/example/app.git",
-        ref: "release-selected-by-user",
-        path: ".",
-      },
-    ),
-  ).toThrow("multiple InstallConfigs");
-});
-
-test("InstallConfig selection uses names only for the generic fallback", () => {
-  expect(
-    selectTakosMobileInstallConfigId(
-      [
-        {
-          id: "cfg-same-app-name",
-          name: "app",
-          store: {
-            source: {
-              url: "https://github.com/example/not-app.git",
-              ref: "main",
-              path: ".",
-            },
-          },
-        },
-        { id: "cfg-generic-name", name: "opentofu-capsule" },
-      ],
-      {
-        url: "https://github.com/example/app.git",
-        ref: "main",
-        path: ".",
-      },
-    ),
-  ).toBe("cfg-generic-name");
-});
-
-test("InstallConfig selection never treats an app config as generic fallback", () => {
-  expect(
-    selectTakosMobileInstallConfigId(
-      [
-        {
-          id: "cfg-default-opentofu-capsule",
-          name: "opentofu-capsule",
-          store: {
-            source: {
-              url: "https://github.com/example/other.git",
-              ref: "main",
-              path: ".",
-            },
-          },
-        },
-        { id: "cfg-generic-name", name: "opentofu-capsule" },
-      ],
-      {
-        url: "https://github.com/example/app.git",
-        ref: "main",
-        path: ".",
-      },
-    ),
-  ).toBe("cfg-generic-name");
+  expect(requests.map((request) => `${request.method} ${request.url}`)).toEqual([
+    "GET https://takos.test/api/spaces/me/capsules",
+  ]);
+  expect(requests[0].headers.get("authorization")).toBe(
+    "Bearer mobile-token",
+  );
 });
 
 test("launcher does not fall back to Capsule outputs, homepages, names, or orphan surfaces", async () => {
@@ -270,25 +108,16 @@ test("launcher does not fall back to Capsule outputs, homepages, names, or orpha
       return json({
         capsules: [
           {
-            id: "capsule-1",
-            sourceId: "source-1",
+            capsule_id: "capsule-1",
             name: "Same name",
             status: "ready",
+            source: {
+              type: "git",
+              url: "https://github.com/example/app.git",
+              ref: "main",
+            },
             homepage: "https://homepage.example/not-authoritative",
             outputs: { launch_url: "https://output.example/not-authorized" },
-          },
-        ],
-      });
-    }
-    if (url.endsWith("/api/spaces/me/sources")) {
-      return json({
-        sources: [
-          {
-            id: "source-1",
-            url: "https://github.com/example/app.git",
-            defaultRef: "main",
-            defaultPath: ".",
-            homepage: "https://source.example/not-authoritative",
           },
         ],
       });
@@ -458,37 +287,28 @@ test("loadTakosMobileHome reads installed Capsules and authorized launcher surfa
       return json({
         capsules: [
           {
-            id: "capsule-1",
-            sourceId: "source-1",
+            capsule_id: "capsule-1",
             name: "jp.takos.office",
             status: "ready",
+            source: {
+              type: "git",
+              url: "https://github.com/tako0614/takos-office.git",
+              ref: "main",
+              path: "deploy/opentofu",
+            },
             homepage: "https://catalog.example/not-authoritative",
             outputs: { launch_url: "https://output.example/not-authorized" },
           },
           {
-            id: "capsule-2",
-            sourceId: "source-2",
+            capsule_id: "capsule-2",
             name: "No launcher",
             status: "active",
-          },
-        ],
-      });
-    }
-    if (url.endsWith("/api/spaces/me/sources")) {
-      return json({
-        sources: [
-          {
-            id: "source-1",
-            url: "https://github.com/tako0614/takos-office.git",
-            defaultRef: "main",
-            defaultPath: "deploy/opentofu",
-          },
-          {
-            id: "source-2",
-            url: "https://github.com/example/no-launcher.git",
-            defaultRef: "v1.0.0",
-            defaultPath: ".",
-            homepage: "https://source.example/not-authoritative",
+            source: {
+              type: "git",
+              url: "https://github.com/example/no-launcher.git",
+              ref: "v1.0.0",
+              path: ".",
+            },
           },
         ],
       });
@@ -703,7 +523,6 @@ test("loadTakosMobileHome reads installed Capsules and authorized launcher surfa
         {
           id: "capsule-1",
           spaceId: "me",
-          sourceId: "source-1",
           name: "jp.takos.office",
           status: "ready",
           source: {
@@ -716,7 +535,6 @@ test("loadTakosMobileHome reads installed Capsules and authorized launcher surfa
         {
           id: "capsule-2",
           spaceId: "me",
-          sourceId: "source-2",
           name: "No launcher",
           status: "active",
           source: {
@@ -775,7 +593,6 @@ test("loadTakosMobileHome reads installed Capsules and authorized launcher surfa
       "GET https://takos.test/api/spaces/me/agent-tasks?limit=4",
       "GET https://takos.test/api/spaces/me/memories?limit=4",
       "GET https://takos.test/api/spaces/me/capsules",
-      "GET https://takos.test/api/spaces/me/sources",
       "GET https://takos.test/api/apps",
       "GET https://takos.test/api/threads/thread-1/messages?limit=5&offset=0",
       "GET https://takos.test/api/threads/thread-2/messages?limit=5&offset=0",
@@ -808,6 +625,28 @@ test("loadTakosMobileHome does not hide authorization failures as empty cards", 
   try {
     await expect(loadTakosMobileHome(session)).rejects.toThrow(
       "Mobile API request failed: 403 /api/spaces",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("loadTakosMobileHome surfaces host and network failures", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/api/notifications/unread-count")) {
+      return new Response(JSON.stringify({ error: "backend_unavailable" }), {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return json({});
+  }) as typeof fetch;
+
+  try {
+    await expect(loadTakosMobileHome(session)).rejects.toThrow(
+      "Mobile API request failed: 503 /api/notifications/unread-count",
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -1632,7 +1471,7 @@ test("deleteTakosMobileMemory rejects blank memory ids", async () => {
   ).rejects.toThrow("Memory id is required.");
 });
 
-test("installTakosMobileGitCapsule uses the public Source, Capsule, and Run flow", async () => {
+test("installTakosMobileGitCapsule uses only the Takos Capsule facade", async () => {
   const requests: Request[] = [];
 
   await expect(
@@ -1647,56 +1486,18 @@ test("installTakosMobileGitCapsule uses the public Source, Capsule, and Run flow
       fetch: async (input, init) => {
         const request = new Request(input, init);
         requests.push(request.clone());
-        if (request.url.endsWith("/capsule-configs")) {
+        if (request.url.endsWith("/git-url/plan")) {
           return json({
-            installConfigs: [
-              {
-                id: "config-generic",
-                name: "opentofu-capsule",
-              },
-              {
-                id: "config-other-path",
-                name: "app-submodule",
-                store: {
-                  source: {
-                    url: "https://github.com/example/app.git",
-                    ref: "stable",
-                    path: "deploy/opentofu",
-                  },
-                },
-              },
-              {
-                id: "config-first-party",
-                name: "app-main",
-                store: {
-                  source: {
-                    url: "https://github.com/example/app",
-                    ref: "main",
-                    path: "./",
-                  },
-                },
-                interfaceBlueprints: [{ key: "launcher" }],
-              },
-            ],
-          });
-        }
-        if (request.url.endsWith("/sources")) {
-          return json({ source: { id: "source-1" } }, 201);
-        }
-        if (request.url.endsWith("/sources/source-1/sync")) {
-          return json({ run: { id: "run-sync", status: "succeeded" } }, 202);
-        }
-        if (request.url.endsWith("/capsules")) {
-          return json({ capsule: { id: "capsule-1" } }, 201);
-        }
-        if (request.url.endsWith("/capsules/capsule-1/plan")) {
-          return json(
-            { run: { id: "run-plan", status: "waiting_approval" } },
-            202,
-          );
-        }
-        if (request.url.endsWith("/runs/run-plan/approve")) {
-          return json({ run: { id: "run-plan", status: "approved" } });
+            source: { id: "source-1" },
+            capsule: { id: "capsule-1", name: "app" },
+            run: { id: "run-plan", status: "waiting_approval" },
+            expected: {
+              workspaceId: "workspace-1",
+              sourceId: "source-1",
+              capsuleId: "capsule-1",
+              runId: "run-plan",
+            },
+          }, 201);
         }
         return json({ run: { id: "run-plan", status: "queued" } }, 202);
       },
@@ -1712,40 +1513,33 @@ test("installTakosMobileGitCapsule uses the public Source, Capsule, and Run flow
 
   expect(requests.map((request) => `${request.method} ${request.url}`)).toEqual(
     [
-      "GET https://takos.test/api/spaces/me/capsule-configs",
-      "POST https://takos.test/api/spaces/me/sources",
-      "POST https://takos.test/api/spaces/me/sources/source-1/sync",
-      "POST https://takos.test/api/spaces/me/capsules",
-      "POST https://takos.test/api/spaces/me/capsules/capsule-1/plan",
-      "POST https://takos.test/api/spaces/me/runs/run-plan/approve",
-      "POST https://takos.test/api/spaces/me/runs/run-plan/apply",
+      "POST https://takos.test/api/spaces/me/capsules/git-url/plan",
+      "POST https://takos.test/api/spaces/me/capsules/git-url/apply",
     ],
   );
   expect(requests[0].headers.get("authorization")).toBe("Bearer mobile-token");
-  expect(await requests[1].json()).toEqual({
-    name: "app",
-    url: "https://github.com/example/app.git",
-    defaultRef: "main",
-    defaultPath: ".",
-    autoSync: false,
+  expect(await requests[0].json()).toEqual({
+    git_url: "https://github.com/example/app.git",
+    ref: "main",
+    module_path: ".",
   });
-  expect(await requests[2].json()).toEqual({ intent: "manual_plan" });
-  expect(await requests[3].json()).toEqual({
-    name: "app",
-    environment: "production",
-    sourceId: "source-1",
-    installConfigId: "config-first-party",
+  expect(await requests[1].json()).toEqual({
+    expected: {
+      workspaceId: "workspace-1",
+      sourceId: "source-1",
+      capsuleId: "capsule-1",
+      runId: "run-plan",
+    },
   });
 });
 
-test("Capsule update plans through its Source and applies the reviewed Run", async () => {
+test("Capsule update uses the Takos revision facade and exact plan evidence", async () => {
   const requests: Request[] = [];
 
   const plan = await planTakosMobileCapsuleUpdate({
     session,
     spaceId: "me",
     capsuleId: " capsule-1 ",
-    sourceId: " source-1 ",
     source: {
       url: "https://github.com/example/app.git",
       ref: "main",
@@ -1754,12 +1548,17 @@ test("Capsule update plans through its Source and applies the reviewed Run", asy
     fetch: async (input, init) => {
       const request = new Request(input, init);
       requests.push(request.clone());
-      if (request.method === "PATCH")
-        return json({ source: { id: "source-1" } });
-      if (request.url.endsWith("/sync")) {
-        return json({ run: { id: "run-sync", status: "succeeded" } }, 202);
-      }
-      return json({ run: { id: "run-plan", status: "waiting_approval" } }, 202);
+      return json({
+        source: { id: "source-1" },
+        capsule: { id: "capsule-1" },
+        run: { id: "run-plan", status: "waiting_approval" },
+        expected: {
+          workspaceId: "workspace-1",
+          sourceId: "source-1",
+          capsuleId: "capsule-1",
+          runId: "run-plan",
+        },
+      }, 201);
     },
   });
 
@@ -1770,9 +1569,6 @@ test("Capsule update plans through its Source and applies the reviewed Run", asy
       fetch: async (input, init) => {
         const request = new Request(input, init);
         requests.push(request.clone());
-        if (request.url.endsWith("/approve")) {
-          return json({ run: { id: "run-plan", status: "approved" } });
-        }
         return json({ run: { id: "run-plan", status: "queued" } }, 202);
       },
     }),
@@ -1785,21 +1581,30 @@ test("Capsule update plans through its Source and applies the reviewed Run", asy
 
   expect(requests.map((request) => `${request.method} ${request.url}`)).toEqual(
     [
-      "PATCH https://takos.test/api/spaces/me/sources/source-1",
-      "POST https://takos.test/api/spaces/me/sources/source-1/sync",
-      "POST https://takos.test/api/spaces/me/capsules/capsule-1/plan",
-      "POST https://takos.test/api/spaces/me/runs/run-plan/approve",
-      "POST https://takos.test/api/spaces/me/runs/run-plan/apply",
+      "POST https://takos.test/api/spaces/me/capsules/git-url/revision/plan",
+      "POST https://takos.test/api/spaces/me/capsules/git-url/revision/apply",
     ],
   );
   expect(await requests[0].json()).toEqual({
-    url: "https://github.com/example/app.git",
-    defaultRef: "main",
-    defaultPath: "deploy",
+    capsule_id: "capsule-1",
+    operation: "upgrade",
+    git_url: "https://github.com/example/app.git",
+    ref: "main",
+    module_path: "deploy",
+  });
+  expect(await requests[1].json()).toEqual({
+    capsule_id: "capsule-1",
+    operation: "upgrade",
+    expected: {
+      workspaceId: "workspace-1",
+      sourceId: "source-1",
+      capsuleId: "capsule-1",
+      runId: "run-plan",
+    },
   });
 });
 
-test("removeTakosMobileCapsule requests a Takosumi destroy Run", async () => {
+test("removeTakosMobileCapsule requests destroy through the Takos facade", async () => {
   const requests: Request[] = [];
 
   await expect(

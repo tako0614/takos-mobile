@@ -535,7 +535,6 @@ function CapsuleLifecycleCard(props: {
         session: props.session,
         spaceId: props.capsule.spaceId,
         capsuleId: props.capsule.id,
-        sourceId: props.capsule.sourceId,
         source: {
           url: source.url,
           ref: updateRef(),
