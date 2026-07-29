@@ -137,6 +137,7 @@ function sourceFromCapsule(
   value: Record<string, unknown>,
 ): TakosMobileGitAddress | undefined {
   const source = mobileRecord(value.source);
+  if (!source) return undefined;
   if (mobileOptionalText(source.type) !== "git") return undefined;
   const url = mobileOptionalText(source.url);
   const ref = mobileOptionalText(source.ref);
