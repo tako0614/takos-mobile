@@ -488,9 +488,12 @@ async function resolveDefaultSpaceId(
   json: <T = unknown>(path: string, init?: RequestInit) => Promise<T>,
 ): Promise<string> {
   const response = await json<SpacesResponse>("/api/spaces");
-  const space = Array.isArray(response.spaces)
-    ? response.spaces.map(spaceIdentifier).find((candidate) => candidate)
-    : undefined;
+  const spaces = Array.isArray(response.spaces) ? response.spaces : [];
+  const defaultSpaces = spaces.filter(isDefaultSpace);
+  if (defaultSpaces.length !== 1) {
+    throw new Error("No Takos workspace is available.");
+  }
+  const space = spaceIdentifier(defaultSpaces[0]);
   if (!space) {
     throw new Error("No Takos workspace is available.");
   }
@@ -518,8 +521,12 @@ async function resolveSpaceModel(
 function spaceIdentifier(space: unknown): string | undefined {
   if (!space || typeof space !== "object") return undefined;
   const record = space as Record<string, unknown>;
-  if (record.kind === "user" || record.is_personal === true) return "me";
+  if (record.is_default === true) return "me";
   return mobileOptionalText(record.slug) ?? mobileOptionalText(record.id);
+}
+
+function isDefaultSpace(space: unknown): boolean {
+  return mobileRecord(space)?.is_default === true;
 }
 
 function summarizeThreadMessage(

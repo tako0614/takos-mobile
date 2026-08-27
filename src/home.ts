@@ -356,14 +356,18 @@ function summarizeInstalledApps(
 function summarizeChatTarget(
   spaces: readonly unknown[] | undefined,
 ): TakosMobileChatTarget | undefined {
-  if (!Array.isArray(spaces)) return undefined;
-  for (const space of spaces) {
-    const target = summarizeSpaceAsChatTarget(space);
-    if (target?.spaceId === "me") return target;
+  if (!Array.isArray(spaces)) {
+    throw new Error("No Takos workspace is available.");
   }
-  return spaces
-    .map((space) => summarizeSpaceAsChatTarget(space))
-    .find((target): target is TakosMobileChatTarget => Boolean(target));
+  const defaultSpaces = spaces.filter(isDefaultSpace);
+  if (defaultSpaces.length !== 1) {
+    throw new Error("No Takos workspace is available.");
+  }
+  const target = summarizeSpaceAsChatTarget(defaultSpaces[0]);
+  if (!target) {
+    throw new Error("No Takos workspace is available.");
+  }
+  return target;
 }
 
 function summarizeSpaceAsChatTarget(
@@ -372,7 +376,7 @@ function summarizeSpaceAsChatTarget(
   if (!space || typeof space !== "object") return undefined;
   const record = space as Record<string, unknown>;
   const spaceId =
-    record.kind === "user" || record.is_personal === true
+    record.is_default === true
       ? "me"
       : (mobileOptionalText(record.slug) ?? mobileOptionalText(record.id));
   if (!spaceId) return undefined;
@@ -380,6 +384,10 @@ function summarizeSpaceAsChatTarget(
     spaceId,
     spaceName: mobileOptionalText(record.name),
   };
+}
+
+function isDefaultSpace(space: unknown): boolean {
+  return mobileRecord(space)?.is_default === true;
 }
 
 function summarizeThread(

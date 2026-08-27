@@ -102,7 +102,9 @@ test("launcher does not fall back to Capsule outputs, homepages, names, or orpha
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith("/api/spaces")) {
-      return json({ spaces: [{ id: "personal", kind: "user", name: "Me" }] });
+      return json({
+        spaces: [{ id: "personal", slug: "personal", is_default: true, name: "Me" }],
+      });
     }
     if (url.endsWith("/api/spaces/me/capsules")) {
       return json({
@@ -205,8 +207,13 @@ test("loadTakosMobileHome reads installed Capsules and authorized launcher surfa
     if (url.endsWith("/api/spaces")) {
       return json({
         spaces: [
-          { id: "space-1", kind: "user", name: "Personal" },
-          { id: "space-2", kind: "team", name: "Team", slug: "team" },
+          { id: "space-2", slug: "team", is_default: false, name: "Team" },
+          {
+            id: "space-1",
+            slug: "personal",
+            is_default: true,
+            name: "Personal",
+          },
         ],
       });
     }
@@ -631,6 +638,56 @@ test("loadTakosMobileHome does not hide authorization failures as empty cards", 
   }
 });
 
+test("workspace selection requires exactly one canonical default workspace", async () => {
+  const inventories = [
+    {
+      spaces: [
+        { id: "space-1", slug: "space-1", is_default: false, name: "Team" },
+      ],
+    },
+    {
+      spaces: [
+        { id: "space-1", slug: "space-1", is_default: true, name: "One" },
+        { id: "space-2", slug: "space-2", is_default: true, name: "Two" },
+      ],
+    },
+    {
+      spaces: [
+        {
+          id: "legacy",
+          slug: "legacy",
+          kind: "user",
+          is_personal: true,
+          name: "Legacy personal",
+        },
+      ],
+    },
+  ] as const;
+
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const inventory of inventories) {
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        return url.endsWith("/api/spaces") ? json(inventory) : json({});
+      }) as typeof fetch;
+
+      await expect(loadTakosMobileHome(session)).rejects.toThrow(
+        "No Takos workspace is available.",
+      );
+      await expect(
+        createTakosMobileChatMessage({
+          session,
+          content: "should not select an ambiguous workspace",
+          locale: "en",
+        }),
+      ).rejects.toThrow("No Takos workspace is available.");
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("loadTakosMobileHome surfaces host and network failures", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -880,7 +937,15 @@ test("createTakosMobileChatMessage creates a thread, message, and run", async ()
       const url = request.url;
       if (url.endsWith("/api/spaces")) {
         return json({
-          spaces: [{ id: "space-1", kind: "user", name: "Personal" }],
+          spaces: [
+            { id: "space-2", slug: "team", is_default: false, name: "Team" },
+            {
+              id: "space-1",
+              slug: "personal",
+              is_default: true,
+              name: "Personal",
+            },
+          ],
         });
       }
       if (url.endsWith("/api/spaces/me/model")) {
