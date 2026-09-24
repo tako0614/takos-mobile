@@ -7,6 +7,39 @@ host remains a Takosumi/operator responsibility; this client does not advertise
 a host-creation action until an official immutable Takos release and complete
 bootstrap path are available.
 
+## What you can do
+
+- connect to an existing Takos host by URL or QR payload, and reconnect from a
+  recent-host list
+- sign in with OIDC PKCE, restore and refresh the session, and unlock saved
+  sessions with biometrics
+- read and continue chats natively: home summary, recent chat cards, full-thread
+  transcript browser, quick composer, and inline replies
+- work with agent tasks and memories: preview, create, and change status without
+  leaving the client
+- read the notification inbox, change notification settings, and receive remote
+  push once an operator gateway is configured
+- open installed apps and set up a Capsule from a Git URL, with an explicit plan
+  review before apply
+- hand off to the connected host's own screens through route handoff and the
+  in-app browser
+
+## Getting started
+
+You need a running Takos host URL, Bun, and the Tauri mobile prerequisites.
+
+```sh
+bun install
+bun run mobile:doctor          # check the local native toolchain
+bun run tauri:android:init     # or: bun run tauri:ios:init
+bun run tauri:android:dev      # or: bun run tauri:ios:dev
+```
+
+`mobile:doctor` reports Java, Android SDK, NDK, Rust targets, and macOS/Xcode
+readiness as warnings unless you pass `--strict-native-env`.
+
+## Design
+
 Mobile-specific UI is intentionally selective. Mature host screens stay on the
 connected Takos host and are opened through route handoff / in-app browser;
 native UI is reserved for compact previews, quick capture/actions, device-backed
@@ -14,7 +47,9 @@ flows, and deep-link handling. Remote push remains feature-off until the
 build supplies a gateway URL; native/store readiness additionally requires the
 provider configuration and physical-device evidence listed below.
 
-Current surface:
+## Current surface
+
+### Connecting and signing in
 
 - URL / QR payload entry
 - mobile route deep links such as `takos://open?path=/chat`, including
@@ -27,6 +62,9 @@ Current surface:
   foundation controller, using the host-advertised client id and explicit
   Takos API scopes
 - connected host URL copy through the shared clipboard text seam
+
+### Chat, agent tasks, and memory
+
 - signed-in home summary for workspace/app/unread counts and recent
   chat-message preview with tapped host-route handoff
 - signed-in notification inbox backed by `/api/notifications`, with keyset
@@ -58,6 +96,9 @@ Current surface:
   controls
 - signed-in quick memory capture backed by `POST /api/spaces/:spaceId/memories`,
   with type/category controls and host memory handoff after save
+
+### Apps and Capsules
+
 - signed-in installed-app list backed by the Takos host's Capsule facade,
   joined by
   exact Capsule owner id to authorized, resolved `interface.ui.surface@1`
@@ -75,6 +116,9 @@ Current surface:
 - signed-in shortcuts that open the connected host's workspace, chat, apps, and
   notifications through the native browser handoff instead of rebuilding those
   full host screens in native UI
+
+### Platform and native wiring
+
 - shared Mobile Kit shell UI with Takos-specific metrics, shortcuts, and
   palette
 - shared Mobile Kit app bootstrap; `src/main.tsx` is
@@ -145,7 +189,7 @@ Current surface:
 - Tauri Android/iOS command scripts, Vite `TAURI_DEV_HOST` mobile dev host
   handling, and a mobile doctor for native readiness checks
 
-Useful commands:
+## Commands
 
 ```sh
 bun run mobile:check
@@ -166,7 +210,7 @@ bun run tauri:native-push:apply:release
 bun run tauri:native-push:verify:release
 ```
 
-Remaining release work:
+## Remaining release work
 
 - keep native coverage focused on mobile-critical quick actions and route
   handoff, not full parity with every host list/settings/detail screen
