@@ -57,7 +57,7 @@ provider configuration and physical-device evidence listed below.
 - recent Takos host list for reconnecting without retyping URLs, with shared
   remove / clear controls
 - signed return/deep-link payload handling for connecting an existing host
-- host discovery through the standalone shared Mobile Kit foundation
+- host discovery through the standalone shared mobile-kit foundation
 - OIDC PKCE sign-in, session restore, refresh, and sign-out through the
   foundation controller, using the host-advertised client id and explicit
   Takos API scopes
@@ -119,11 +119,11 @@ provider configuration and physical-device evidence listed below.
 
 ### Platform and native wiring
 
-- shared Mobile Kit shell UI with Takos-specific metrics, shortcuts, and
+- shared mobile-kit shell UI with Takos-specific metrics, shortcuts, and
   palette
-- shared Mobile Kit app bootstrap; `src/main.tsx` is
+- shared mobile-kit app bootstrap; `src/main.tsx` is
   mostly typed product config
-- typed Tauri default product bridge factory from the shared Mobile Kit
+- typed Tauri default product bridge factory from the shared mobile-kit
   for deep links, opener, persistent store, Stronghold, local notifications,
   QR scanning, clipboard text writes, optional remote-push injection, and
   opener-backed call fallback
@@ -246,7 +246,7 @@ native doctor and production native-push wiring verification, so it is expected
 to fail until the generated Android/iOS projects, production
 `aps-environment`, SDKs, and Rust mobile targets are in place.
 `mobile:release-evidence-check` validates
-`mobile/release/mobile-release-evidence.json` (or
+`release/mobile-release-evidence.json` (or
 `MOBILE_RELEASE_EVIDENCE_FILE`) for store signing, uploaded artifact,
 screenshot, device smoke, native-security scenarios, remote-push backend, and
 remote-push physical-device evidence, plus mobile OIDC code exchange,
