@@ -4,6 +4,26 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Takos Mobile</title>
+    <script>
+      /* Pre-hydration language init: mirrors detectLocale (ja* browser => ja,
+         else en) so <html lang> matches the detected UI language. */
+      (function () {
+        document.documentElement.lang =
+          (navigator.language || "").toLowerCase().startsWith("ja")
+            ? "ja"
+            : "en";
+      })();
+    </script>
+    <style>
+      /* Pre-hydration flash guard — matches --shell-bg / --shell-text so the
+         webview does not paint browser-default white first. */
+      html,
+      body {
+        margin: 0;
+        background: #f7f8f4;
+        color: #172017;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
