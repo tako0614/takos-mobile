@@ -151,6 +151,10 @@ renderMobileClientApp<TakosMobileHome>({
     homeTitle: (home) => home?.userName,
     metricsLabel: "Workspace summary",
     shortcutsLabel: "Workspace shortcuts",
+    // Shown before sign-in on a host this device has never signed in to (a
+    // link can name any host); the kit's default is Japanese.
+    firstTimeHostWarning:
+      "This device has not signed in to this host before. Check that the URL is right and that you trust it before signing in.",
   },
   metrics: workspaceMetrics,
   hostActions: workspaceActions,

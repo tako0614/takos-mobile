@@ -84,11 +84,21 @@ Screen links (`takos://open?path=/…`, optionally with `host_url=`, and
 and tapped notifications go through one route handoff: it opens that screen of
 the connected host in the system browser, which uses its own Takos web
 session (the mobile bearer token is never passed on). Links accept only
-absolute paths on the connected host's origin; paths that resolve to another
-origin (`//host`, `/\host`, other schemes), whitespace or control characters,
-more than 2,048 characters, or credential-named query or fragment parameters
-(`code`, `token`, `access_token`, `session`, …) are refused before anything
-opens. A link for another saved host shows that host and waits for the user to
+absolute paths on the connected host's origin. Non-http(s) URLs, paths that
+resolve to another origin (`//host`, `/\host`), whitespace or control
+characters, and more than 2,048 characters are refused before anything opens.
+Links and notification routes whose query, fragment or path parameters have
+credential-looking names (`code`, `token`, `access_token`, `session`,
+`…_token`, …) are refused too, on a best-effort basis: the check uses a name
+list and endings, so a credential under another name still passes. Links with
+a `code` parameter (such as `/join?code=…`) do not open either (mobile-kit's
+`allowRouteCodeParameter` is not enabled). Parameter names must be ASCII:
+full-width letters are folded to ASCII first, and a link or notification
+route with any other non-ASCII name (such as `?名前=…`) does not open, so
+lookalike letters cannot spell a credential name; non-ASCII values and
+anchors are fine. The first time a link names a host
+this device has never signed in to, a warning is shown before sign-in. A link
+for another saved host shows that host and waits for the user to
 switch; the route opens after the switch, or after sign-in when signed out.
 
 Until store IDs exist, Takosumi screen interfaces do not declare `clients`.
