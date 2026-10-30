@@ -52,8 +52,9 @@ provider configuration and physical-device evidence listed below.
 ### Connecting and signing in
 
 - URL / QR payload entry
-- mobile route deep links such as `takos://open?path=/chat`, including
-  pending route open after sign-in when the payload includes `host_url`
+- mobile route deep links such as `takos://open?path=/chat` and
+  `takos://open?url=https://<host>/chat`, including pending route open after
+  sign-in when the payload includes `host_url`; see "Links" below
 - recent Takos host list for reconnecting without retyping URLs, with shared
   remove / clear controls
 - signed return/deep-link payload handling for connecting an existing host
@@ -62,6 +63,36 @@ provider configuration and physical-device evidence listed below.
   foundation controller, using the host-advertised client id and explicit
   Takos API scopes
 - connected host URL copy through the shared clipboard text seam
+
+### Links (opening from Takosumi, screen links)
+
+When Takosumi opens this app as a screen's native client, it fills the trusted
+template for this app (`jp.takos.mobile`, scheme `takos`) with the screen URL's
+origin, URL-encoded, and sends one of:
+
+- `takos://connect?host_url=<origin>`
+- `takos://connect?host_url=<origin>&product=takos`
+
+Both are accepted (sign-in is never automatic). Signed out, the app finds the
+host and stops before sign-in. Signed in to another host, the current session
+stays usable and the host is shown as another host; the user chooses to switch
+to a saved account or sign in to add it. Nothing switches silently. Signed in
+to the same host, the app just opens.
+
+Screen links (`takos://open?path=/…`, optionally with `host_url=`, and
+`takos://open?url=https://<host>/…`), the workspace shortcuts, the home cards
+and tapped notifications go through one route handoff: it opens that screen of
+the connected host in the system browser, which uses its own Takos web
+session (the mobile bearer token is never passed on). Links accept only
+absolute paths on the connected host's origin; paths that resolve to another
+origin (`//host`, `/\host`, other schemes), whitespace or control characters,
+more than 2,048 characters, or credential-named query or fragment parameters
+(`code`, `token`, `access_token`, `session`, …) are refused before anything
+opens. A link for another saved host shows that host and waits for the user to
+switch; the route opens after the switch, or after sign-in when signed out.
+
+Until store IDs exist, Takosumi screen interfaces do not declare `clients`.
+Universal links / App Links on a publisher domain are not set up.
 
 ### Chat, agent tasks, and memory
 

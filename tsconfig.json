@@ -12,15 +12,7 @@
     "noEmit": true,
     "strict": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
-    "paths": {
-      "@takosjp/mobile-kit": [
-        "../mobile-kit/src/index.ts"
-      ],
-      "@takosjp/mobile-kit/solid": [
-        "../mobile-kit/src/solid.ts"
-      ]
-    }
+    "preserveSymlinks": true
   },
   "include": ["src"]
 }
