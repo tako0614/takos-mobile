@@ -22,6 +22,7 @@ import {
 } from "@takosjp/mobile-kit/solid";
 import { productAdapter } from "./product.ts";
 import { createProductNativeBridge } from "./native.ts";
+import { createHostRouteHandoff } from "./host-route.ts";
 import {
   applyTakosMobileCapsulePlan,
   planTakosMobileCapsuleUpdate,
@@ -111,9 +112,17 @@ const workspaceActions = defineMobileHostActions<TakosMobileHome>([
   },
 ]);
 
+// One bridge for the shell and the route handoff, which opens host screens in
+// the system browser through it.
+const nativeBridge = createProductNativeBridge();
+const openHostRouteInBrowser = createHostRouteHandoff((url) =>
+  nativeBridge.openExternalUrl(url),
+);
+
 renderMobileClientApp<TakosMobileHome>({
   adapter: productAdapter,
-  createNativeBridge: createProductNativeBridge,
+  createNativeBridge: () => nativeBridge,
+  openHostRoute: openHostRouteInBrowser,
   loadHome: loadTakosMobileHome,
   registerPush: registerTakosMobilePush,
   unregisterPush: unregisterTakosMobilePush,

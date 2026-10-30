@@ -10,6 +10,9 @@ export const productAdapter: MobileProductAdapter = {
   // declares in `takos/web/index.html`.
   accentColor: "#E53935",
   mobileScheme: "takos",
+  // A link for another saved host shows it and waits for the user to switch;
+  // it never changes the account in use by itself.
+  confirmRouteAccountSwitch: true,
   oidcScopes: [
     "openid",
     "profile",
