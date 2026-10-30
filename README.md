@@ -92,7 +92,11 @@ credential-looking names (`code`, `token`, `access_token`, `session`,
 `…_token`, …) are refused too, on a best-effort basis: the check uses a name
 list and endings, so a credential under another name still passes. Links with
 a `code` parameter (such as `/join?code=…`) do not open either (mobile-kit's
-`allowRouteCodeParameter` is not enabled). The first time a link names a host
+`allowRouteCodeParameter` is not enabled). Parameter names must be ASCII:
+full-width letters are folded to ASCII first, and a link or notification
+route with any other non-ASCII name (such as `?名前=…`) does not open, so
+lookalike letters cannot spell a credential name; non-ASCII values and
+anchors are fine. The first time a link names a host
 this device has never signed in to, a warning is shown before sign-in. A link
 for another saved host shows that host and waits for the user to
 switch; the route opens after the switch, or after sign-in when signed out.
